@@ -93,6 +93,15 @@ public class DBusTrayIcon : IDisposable
             _pathHandler.Add(_sniHandler);
             _connection.AddMethodHandler(_pathHandler);
 
+            // Register D-Bus menu handler at /MenuBar path
+            _menuPathHandler = new PathHandler("/MenuBar");
+            _menuHandler = new DBusMenuHandler(_connection, _logger);
+            _menuHandler.OnQuitRequested += () => OnQuitRequested?.Invoke();
+            _menuHandler.OnAboutRequested += () => OnAboutRequested?.Invoke();
+
+            _menuPathHandler.Add(_menuHandler);
+            _connection.AddMethodHandler(_menuPathHandler);
+
             IsActive = true;
 
             // Start watching for StatusNotifierWatcher service
@@ -479,6 +488,14 @@ public class DBusTrayIcon : IDisposable
 
         StopAnimation();
         DestroyTrayIcon();
+
+        // Clean up menu handler
+        if (_menuHandler is not null && _menuPathHandler is not null)
+        {
+            _menuPathHandler.Remove(_menuHandler);
+            _connection?.RemoveMethodHandler(_menuPathHandler.Path);
+        }
+
         _serviceWatchDisposable?.Dispose();
         _connection?.Dispose();
 
