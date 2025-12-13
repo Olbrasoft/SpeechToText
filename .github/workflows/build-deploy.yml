@@ -90,6 +90,12 @@ jobs:
           echo "APT repository updated with version $VERSION!"
           echo "Users can now run: sudo apt update && sudo apt upgrade"
       
+      - name: Auto-upgrade local installation
+        run: |
+          echo "Updating APT and upgrading speech-to-text package..."
+          sudo apt update && sudo apt upgrade -y speech-to-text
+          echo "Package upgraded to version ${{ steps.version.outputs.version }}"
+      
       - name: Summary
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
@@ -97,5 +103,6 @@ jobs:
           echo "- **Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Package:** ${{ steps.find-deb.outputs.deb_file }}" >> $GITHUB_STEP_SUMMARY
           echo "- **APT repo updated:** Yes" >> $GITHUB_STEP_SUMMARY
+          echo "- **Local installation upgraded:** Yes" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Run \`sudo apt update && sudo apt upgrade\` to install." >> $GITHUB_STEP_SUMMARY
+          echo "Package automatically upgraded on local system." >> $GITHUB_STEP_SUMMARY
