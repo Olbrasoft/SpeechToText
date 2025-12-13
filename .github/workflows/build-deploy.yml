@@ -58,20 +58,25 @@ jobs:
         run: |
           DEB_FILE="${{ steps.find-deb.outputs.deb_file }}"
           APT_REPO="$HOME/apt-repo"
+          VERSION="${{ steps.version.outputs.version }}"
           
           echo "Copying $DEB_FILE to $APT_REPO/pool/main/"
           cp "$DEB_FILE" "$APT_REPO/pool/main/"
           
           cd "$APT_REPO"
           
+          # Remove old versions to keep only the latest
+          echo "Removing old package versions..."
+          ls pool/main/speech-to-text.*.deb | sort -V | head -n -1 | xargs -r rm -v
+          
           echo "Generating Packages index..."
-          dpkg-scanpackages --arch amd64 pool/ > dists/stable/main/binary-amd64/Packages
+          dpkg-scanpackages pool/main/ > dists/stable/main/binary-amd64/Packages
           gzip -k -f dists/stable/main/binary-amd64/Packages
           
           echo "Generating Release file..."
           apt-ftparchive release dists/stable > dists/stable/Release
           
-          echo "APT repository updated!"
+          echo "APT repository updated with version $VERSION!"
           echo "Users can now run: sudo apt update && sudo apt upgrade"
       
       - name: Summary
