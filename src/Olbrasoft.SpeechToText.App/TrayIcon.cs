@@ -33,9 +33,10 @@ public class TrayIcon : IDisposable
     private bool _isAnimating;
     private GLib.GSourceFunc? _animationCallback;
 
-    // Watchdog timer settings
-    private const int WatchdogIntervalMs = 2000;
-    private Timer? _watchdogTimer;
+    // Watchdog timer settings (uses GTK timer for reliable main-thread execution)
+    private const uint WatchdogIntervalMs = 2000;
+    private uint _watchdogGtkTimer;
+    private GLib.GSourceFunc? _watchdogCallback;
     private volatile bool _isIconIdle = true;
     private readonly object _stateLock = new();
 
@@ -118,35 +119,36 @@ public class TrayIcon : IDisposable
         // Subscribe to dictation service events
         _dictationService.StateChanged += OnDictationStateChanged;
 
-        // Start watchdog timer
-        _watchdogTimer = new Timer(WatchdogCallback, null, WatchdogIntervalMs, WatchdogIntervalMs);
+        // Start GTK-native watchdog timer (runs on GTK main thread - reliable)
+        _watchdogCallback = WatchdogGtkCallback;
+        _watchdogGtkTimer = GLib.g_timeout_add(WatchdogIntervalMs, _watchdogCallback, IntPtr.Zero);
 
         _isInitialized = true;
-        _logger.LogInformation("TrayIcon initialized with watchdog timer");
+        _logger.LogInformation("TrayIcon initialized with GTK watchdog timer");
     }
 
     /// <summary>
-    /// Watchdog callback - checks icon state consistency every 2 seconds.
-    /// Aggressively forces idle icon when app is idle, regardless of tracked state.
+    /// GTK watchdog callback - runs on GTK main thread every 2 seconds.
+    /// Forces idle icon when app is idle to fix stuck animation frames.
     /// </summary>
-    private void WatchdogCallback(object? state)
+    private bool WatchdogGtkCallback(IntPtr data)
     {
-        if (!_isInitialized || _disposed)
-            return;
+        if (_disposed)
+            return false; // Stop timer
+
+        if (!_isInitialized || _indicator == IntPtr.Zero)
+            return true; // Keep timer, but skip this tick
 
         var dictationState = _dictationService.State;
 
-        // Always force idle icon when app is idle - belt-and-suspenders approach
-        // This catches race conditions where tracked state doesn't match actual icon
-        if (dictationState == DictationState.Idle)
+        // Force idle icon when app is idle - catches race conditions
+        if (dictationState == DictationState.Idle && !_isIconIdle)
         {
-            // Schedule icon reset on GTK thread unconditionally
-            GLib.g_idle_add(_ =>
-            {
-                ForceIdleIcon();
-                return false;
-            }, IntPtr.Zero);
+            _logger.LogWarning("Watchdog: Icon out of sync, forcing to idle");
+            ForceIdleIcon(); // Already on GTK thread, no g_idle_add needed
         }
+
+        return true; // Keep timer running
     }
 
     /// <summary>
@@ -367,9 +369,12 @@ public class TrayIcon : IDisposable
 
         _dictationService.StateChanged -= OnDictationStateChanged;
 
-        // Stop watchdog timer
-        _watchdogTimer?.Dispose();
-        _watchdogTimer = null;
+        // Stop GTK watchdog timer
+        if (_watchdogGtkTimer != 0)
+        {
+            GLib.g_source_remove(_watchdogGtkTimer);
+            _watchdogGtkTimer = 0;
+        }
 
         // Stop animation if running
         lock (_stateLock)
