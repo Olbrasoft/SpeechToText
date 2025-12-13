@@ -25,10 +25,12 @@ public class DictationService : IDisposable
     private readonly ISpeechTranscriber _speechTranscriber;
     private readonly ITextTyper _textTyper;
     private readonly TypingSoundPlayer? _typingSoundPlayer;
+    private readonly KeyCode _triggerKey;
+    private readonly KeyCode _cancelKey;
 
     private DictationState _state = DictationState.Idle;
     private CancellationTokenSource? _cts;
-    private KeyCode _triggerKey = KeyCode.CapsLock;
+    private CancellationTokenSource? _transcriptionCts;
 
     /// <summary>
     /// Event raised when dictation state changes.
@@ -47,7 +49,8 @@ public class DictationService : IDisposable
         ISpeechTranscriber speechTranscriber,
         ITextTyper textTyper,
         TypingSoundPlayer? typingSoundPlayer = null,
-        KeyCode triggerKey = KeyCode.CapsLock)
+        KeyCode triggerKey = KeyCode.CapsLock,
+        KeyCode cancelKey = KeyCode.Escape)
     {
         _logger = logger;
         _keyboardMonitor = keyboardMonitor;
@@ -56,6 +59,7 @@ public class DictationService : IDisposable
         _textTyper = textTyper;
         _typingSoundPlayer = typingSoundPlayer;
         _triggerKey = triggerKey;
+        _cancelKey = cancelKey;
     }
 
     /// <summary>
@@ -80,6 +84,14 @@ public class DictationService : IDisposable
 
     private void OnKeyReleased(object? sender, KeyEventArgs e)
     {
+        // Handle cancel key during transcription
+        if (e.Key == _cancelKey && _state == DictationState.Transcribing)
+        {
+            _logger.LogInformation("{CancelKey} pressed - cancelling transcription", _cancelKey);
+            CancelTranscription();
+            return;
+        }
+
         if (e.Key != _triggerKey)
             return;
 
@@ -96,7 +108,15 @@ public class DictationService : IDisposable
             _logger.LogInformation("{TriggerKey} pressed - stopping dictation", _triggerKey);
             _ = Task.Run(() => StopDictationAsync());
         }
-        // If Transcribing, ignore the key press
+        // If Transcribing, ignore the trigger key press (but cancel key is handled above)
+    }
+
+    /// <summary>
+    /// Cancels ongoing transcription.
+    /// </summary>
+    private void CancelTranscription()
+    {
+        _transcriptionCts?.Cancel();
     }
 
     /// <summary>
@@ -153,11 +173,14 @@ public class DictationService : IDisposable
 
             SetState(DictationState.Transcribing);
 
+            // Create cancellation token for transcription
+            _transcriptionCts = new CancellationTokenSource();
+
             // Start transcription sound loop
             _typingSoundPlayer?.StartLoop();
 
             _logger.LogInformation("Starting transcription...");
-            var result = await _speechTranscriber.TranscribeAsync(audioData);
+            var result = await _speechTranscriber.TranscribeAsync(audioData, _transcriptionCts.Token);
 
             // Stop transcription sound loop
             _typingSoundPlayer?.StopLoop();
@@ -175,14 +198,20 @@ public class DictationService : IDisposable
                 _logger.LogWarning("Transcription failed: {Error}", result.ErrorMessage);
             }
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("Transcription cancelled by user");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed during transcription");
         }
         finally
         {
-            // Ensure sound is stopped even on error
+            // Ensure sound is stopped even on error/cancel
             _typingSoundPlayer?.StopLoop();
+            _transcriptionCts?.Dispose();
+            _transcriptionCts = null;
             _cts?.Dispose();
             _cts = null;
             SetState(DictationState.Idle);

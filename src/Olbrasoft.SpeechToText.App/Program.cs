@@ -18,6 +18,8 @@ var ggmlModelPath = config.GetValue<string>("Dictation:GgmlModelPath")
 var whisperLanguage = config.GetValue<string>("Dictation:WhisperLanguage") ?? "cs";
 var triggerKeyName = config.GetValue<string>("Dictation:TriggerKey") ?? "CapsLock";
 var triggerKey = Enum.TryParse<KeyCode>(triggerKeyName, ignoreCase: true, out var key) ? key : KeyCode.CapsLock;
+var cancelKeyName = config.GetValue<string>("Dictation:CancelKey") ?? "Escape";
+var cancelKey = Enum.TryParse<KeyCode>(cancelKeyName, ignoreCase: true, out var ckey) ? ckey : KeyCode.Escape;
 var transcriptionSoundPath = config.GetValue<string?>("Dictation:TranscriptionSoundPath");
 var showTranscriptionAnimation = config.GetValue<bool>("Dictation:ShowTranscriptionAnimation");
 
@@ -100,7 +102,8 @@ var dictationService = new DictationService(
     speechTranscriber,
     textTyper,
     typingSoundPlayer,
-    triggerKey);
+    triggerKey,
+    cancelKey);
 
 var trayIconLogger = loggerFactory.CreateLogger<TrayIcon>();
 var trayIcon = new TrayIcon(trayIconLogger, dictationService, showTranscriptionAnimation);
