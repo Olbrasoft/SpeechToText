@@ -233,7 +233,12 @@ public class TrayIcon : IDisposable
         }
 
         _isAnimating = false;
-        _logger.LogDebug("Tray icon animation stopped");
+
+        // Reset icon to idle state
+        var iconPath = Path.Combine(_iconsPath, $"{IconIdle}.svg");
+        AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Idle");
+
+        _logger.LogDebug("Tray icon animation stopped, icon reset to idle");
     }
 
     private bool AnimateFrame(IntPtr data)
