@@ -24,14 +24,14 @@ public class TrayIcon : IDisposable
     private const string IconRecording = "trigger-speech-to-text-recording"; // Orange icon for recording
     private const string IconOff = "text-to-speech-off";
 
-    // Animation settings
-    private const uint AnimationIntervalMs = 200;
+    // Animation settings (CancellationToken-based for reliable cancellation)
+    private const int AnimationIntervalMs = 200;
     private const int FrameCount = 5;
     private string[] _frameNames = null!;
     private int _currentFrame;
-    private uint _animationTimer;
-    private bool _isAnimating;
-    private GLib.GSourceFunc? _animationCallback;
+    private CancellationTokenSource? _animationCts;
+    private volatile bool _isAnimating;
+    private long _animationGeneration; // Prevents stale icon updates
 
     // Watchdog timer settings (uses GTK timer for reliable main-thread execution)
     private const uint WatchdogIntervalMs = 2000;
@@ -153,6 +153,7 @@ public class TrayIcon : IDisposable
 
     /// <summary>
     /// Forces the icon to idle state, stopping any animation.
+    /// Called by watchdog when icon is out of sync.
     /// </summary>
     private void ForceIdleIcon()
     {
@@ -161,11 +162,12 @@ public class TrayIcon : IDisposable
 
         lock (_stateLock)
         {
-            // Stop animation if running
-            if (_isAnimating && _animationTimer != 0)
+            // Cancel animation if running
+            if (_isAnimating)
             {
-                GLib.g_source_remove(_animationTimer);
-                _animationTimer = 0;
+                _animationCts?.Cancel();
+                _animationCts = null;
+                _animationGeneration++;
                 _isAnimating = false;
             }
 
@@ -281,47 +283,92 @@ public class TrayIcon : IDisposable
             return;
         }
 
+        // Cancel any previous animation
+        _animationCts?.Cancel();
+        _animationCts = new CancellationTokenSource();
+
         _currentFrame = 0;
-        _animationCallback = AnimateFrame;
-        _animationTimer = GLib.g_timeout_add(AnimationIntervalMs, _animationCallback, IntPtr.Zero);
         _isAnimating = true;
         _isIconIdle = false;
-        _logger.LogDebug("Tray icon animation started");
+        _animationGeneration++;
+
+        var generation = _animationGeneration;
+        var cts = _animationCts;
+
+        // Start animation loop on background thread
+        _ = RunAnimationLoopAsync(generation, cts.Token);
+
+        _logger.LogDebug("Tray icon animation started (generation {Generation})", generation);
     }
 
     private void StopAnimationLocked()
     {
         // Must be called with _stateLock held
-        // FIRST stop the timer source to prevent race with AnimateFrame callback
-        if (_animationTimer != 0)
-        {
-            GLib.g_source_remove(_animationTimer);
-            _animationTimer = 0;
-        }
+        // Cancel the animation task - this is clean and reliable
+        _animationCts?.Cancel();
+        _animationCts = null;
 
-        // THEN set the flag
+        // Increment generation to invalidate any pending icon updates
+        _animationGeneration++;
+
+        // Set flag to false
         _isAnimating = false;
 
-        // AND immediately set idle icon here as backup (belt-and-suspenders)
-        // This prevents race condition where AnimateFrame runs after flag is set
-        var iconPath = Path.Combine(_iconsPath, $"{IconIdle}.svg");
-        AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Idle");
-        _isIconIdle = true;
-
-        _logger.LogDebug("Tray icon animation stopped, icon forced to idle");
+        // Always set idle icon immediately (on GTK thread via g_idle_add for safety)
+        var generation = _animationGeneration;
+        GLib.g_idle_add(_ =>
+        {
+            // Only update if generation still matches (no new animation started)
+            if (_animationGeneration == generation && !_isAnimating)
+            {
+                var iconPath = Path.Combine(_iconsPath, $"{IconIdle}.svg");
+                AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Idle");
+                _isIconIdle = true;
+                _logger.LogDebug("Animation stopped, icon set to idle (generation {Generation})", generation);
+            }
+            return false;
+        }, IntPtr.Zero);
     }
 
-    private bool AnimateFrame(IntPtr data)
+    /// <summary>
+    /// Async animation loop using CancellationToken for reliable cancellation.
+    /// Runs on background thread, marshals icon updates to GTK thread.
+    /// </summary>
+    private async Task RunAnimationLoopAsync(long generation, CancellationToken ct)
     {
-        if (!_isInitialized || _indicator == IntPtr.Zero || !_isAnimating)
-            return false;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var frame = _currentFrame;
+                var iconPath = Path.Combine(_iconsPath, $"{_frameNames[frame]}.svg");
 
-        _currentFrame = (_currentFrame + 1) % FrameCount;
+                // Marshal icon update to GTK thread
+                GLib.g_idle_add(_ =>
+                {
+                    // Only update if this animation is still current
+                    if (_animationGeneration == generation && _isAnimating && !ct.IsCancellationRequested)
+                    {
+                        AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Transcribing...");
+                    }
+                    return false;
+                }, IntPtr.Zero);
 
-        var iconPath = Path.Combine(_iconsPath, $"{_frameNames[_currentFrame]}.svg");
-        AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Transcribing...");
+                _currentFrame = (frame + 1) % FrameCount;
 
-        return true; // Continue animation
+                // Wait with cancellation support
+                await Task.Delay(AnimationIntervalMs, ct);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when animation is cancelled - clean exit
+            _logger.LogDebug("Animation loop cancelled (generation {Generation})", generation);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Animation loop error");
+        }
     }
 
     private void UpdateMenuItems(DictationState state)
@@ -379,10 +426,10 @@ public class TrayIcon : IDisposable
         // Stop animation if running
         lock (_stateLock)
         {
-            if (_isAnimating && _animationTimer != 0)
-            {
-                GLib.g_source_remove(_animationTimer);
-            }
+            _animationCts?.Cancel();
+            _animationCts?.Dispose();
+            _animationCts = null;
+            _isAnimating = false;
         }
 
         _disposed = true;
