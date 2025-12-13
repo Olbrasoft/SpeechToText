@@ -19,6 +19,7 @@ var whisperLanguage = config.GetValue<string>("Dictation:WhisperLanguage") ?? "c
 var triggerKeyName = config.GetValue<string>("Dictation:TriggerKey") ?? "CapsLock";
 var triggerKey = Enum.TryParse<KeyCode>(triggerKeyName, ignoreCase: true, out var key) ? key : KeyCode.CapsLock;
 var transcriptionSoundPath = config.GetValue<string?>("Dictation:TranscriptionSoundPath");
+var showTranscriptionAnimation = config.GetValue<bool>("Dictation:ShowTranscriptionAnimation");
 
 // Setup logging
 using var loggerFactory = LoggerFactory.Create(builder =>
@@ -102,7 +103,7 @@ var dictationService = new DictationService(
     triggerKey);
 
 var trayIconLogger = loggerFactory.CreateLogger<TrayIcon>();
-var trayIcon = new TrayIcon(trayIconLogger, dictationService);
+var trayIcon = new TrayIcon(trayIconLogger, dictationService, showTranscriptionAnimation);
 
 var cts = new CancellationTokenSource();
 

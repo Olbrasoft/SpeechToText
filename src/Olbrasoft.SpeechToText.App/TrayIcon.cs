@@ -10,6 +10,7 @@ public class TrayIcon : IDisposable
 {
     private readonly ILogger<TrayIcon> _logger;
     private readonly DictationService _dictationService;
+    private readonly bool _showAnimation;
 
     private IntPtr _indicator;
     private string _iconsPath = null!;
@@ -23,15 +24,25 @@ public class TrayIcon : IDisposable
     private const string IconRecording = "text-to-speech";
     private const string IconOff = "text-to-speech-off";
 
+    // Animation settings
+    private const uint AnimationIntervalMs = 200;
+    private const int FrameCount = 5;
+    private string[] _frameNames = null!;
+    private int _currentFrame;
+    private uint _animationTimer;
+    private bool _isAnimating;
+    private GLib.GSourceFunc? _animationCallback;
+
     // Keep callbacks alive to prevent GC
     private GObject.GCallback? _startCallback;
     private GObject.GCallback? _stopCallback;
     private GObject.GCallback? _quitCallback;
 
-    public TrayIcon(ILogger<TrayIcon> logger, DictationService dictationService)
+    public TrayIcon(ILogger<TrayIcon> logger, DictationService dictationService, bool showAnimation = false)
     {
         _logger = logger;
         _dictationService = dictationService;
+        _showAnimation = showAnimation;
     }
 
     /// <summary>
@@ -56,18 +67,40 @@ public class TrayIcon : IDisposable
 
         _logger.LogInformation("Icons path: {Path}", _iconsPath);
 
-        // Create app indicator
+        // Setup animation frame names
+        _frameNames = new string[FrameCount];
+        for (int i = 0; i < FrameCount; i++)
+        {
+            _frameNames[i] = $"document-white-frame{i + 1}";
+        }
+
+        // Check if animation icons exist
+        if (_showAnimation)
+        {
+            var firstFrame = Path.Combine(_iconsPath, $"{_frameNames[0]}.svg");
+            if (!File.Exists(firstFrame))
+            {
+                _logger.LogWarning("Animation icons not found at {Path}, animation disabled", firstFrame);
+            }
+            else
+            {
+                _logger.LogInformation("Animation enabled with {FrameCount} frames", FrameCount);
+            }
+        }
+
+        // Create app indicator with full path to icon
+        var iconPath = Path.Combine(_iconsPath, $"{IconIdle}.svg");
+        _logger.LogInformation("Initial icon path: {Path}", iconPath);
+
         _indicator = AppIndicator.app_indicator_new(
             "speech-to-text",
-            IconIdle,
+            iconPath,
             AppIndicator.Category.ApplicationStatus);
 
         if (_indicator == IntPtr.Zero)
         {
             throw new InvalidOperationException("Failed to create app indicator");
         }
-
-        AppIndicator.app_indicator_set_icon_theme_path(_indicator, _iconsPath);
         AppIndicator.app_indicator_set_title(_indicator, "Speech to Text");
 
         // Start as ACTIVE (visible)
@@ -145,6 +178,17 @@ public class TrayIcon : IDisposable
         if (!_isInitialized || _indicator == IntPtr.Zero)
             return;
 
+        // Handle animation for Transcribing state
+        if (state == DictationState.Transcribing && _showAnimation)
+        {
+            StartAnimation();
+            return;
+        }
+        else
+        {
+            StopAnimation();
+        }
+
         var iconPath = state switch
         {
             DictationState.Recording => Path.Combine(_iconsPath, $"{IconRecording}.svg"),
@@ -153,6 +197,55 @@ public class TrayIcon : IDisposable
         };
 
         AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, state.ToString());
+    }
+
+    private void StartAnimation()
+    {
+        if (_isAnimating)
+            return;
+
+        var firstFrame = Path.Combine(_iconsPath, $"{_frameNames[0]}.svg");
+        if (!File.Exists(firstFrame))
+        {
+            _logger.LogWarning("Animation icons not found, using static icon");
+            var iconPath = Path.Combine(_iconsPath, $"{IconRecording}.svg");
+            AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Transcribing");
+            return;
+        }
+
+        _currentFrame = 0;
+        _animationCallback = AnimateFrame;
+        _animationTimer = GLib.g_timeout_add(AnimationIntervalMs, _animationCallback, IntPtr.Zero);
+        _isAnimating = true;
+        _logger.LogDebug("Tray icon animation started");
+    }
+
+    private void StopAnimation()
+    {
+        if (!_isAnimating)
+            return;
+
+        if (_animationTimer != 0)
+        {
+            GLib.g_source_remove(_animationTimer);
+            _animationTimer = 0;
+        }
+
+        _isAnimating = false;
+        _logger.LogDebug("Tray icon animation stopped");
+    }
+
+    private bool AnimateFrame(IntPtr data)
+    {
+        if (!_isInitialized || _indicator == IntPtr.Zero || !_isAnimating)
+            return false;
+
+        _currentFrame = (_currentFrame + 1) % FrameCount;
+
+        var iconPath = Path.Combine(_iconsPath, $"{_frameNames[_currentFrame]}.svg");
+        AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Transcribing...");
+
+        return true; // Continue animation
     }
 
     private void UpdateMenuItems(DictationState state)
@@ -199,6 +292,12 @@ public class TrayIcon : IDisposable
             return;
 
         _dictationService.StateChanged -= OnDictationStateChanged;
+
+        // Stop animation if running
+        if (_isAnimating && _animationTimer != 0)
+        {
+            GLib.g_source_remove(_animationTimer);
+        }
 
         _disposed = true;
     }
