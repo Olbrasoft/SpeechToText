@@ -123,11 +123,7 @@ var dictationService = new DictationService(
 
 // Create D-Bus tray icon (new implementation that bypasses GNOME icon caching)
 var dbusTrayIconLogger = loggerFactory.CreateLogger<DBusTrayIcon>();
-var iconsPath = Path.Combine(AppContext.BaseDirectory, "icons");
-if (!Directory.Exists(iconsPath))
-{
-    iconsPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "assets", "icons");
-}
+var iconsPath = FindIconsPath(logger);
 var dbusTrayIcon = new DBusTrayIcon(dbusTrayIconLogger, iconsPath, iconSize: 22);
 
 // Create separate animated icon for transcription (second tray icon to bypass GNOME caching)
@@ -298,4 +294,50 @@ static void ShowAboutDialog(string version)
         Console.WriteLine($"Speech to Text v{version}");
         Console.WriteLine("https://github.com/Olbrasoft/SpeechToText");
     }
+}
+
+/// <summary>
+/// Finds the icons directory by checking multiple possible locations.
+/// Works for both installed .deb package and development/debug builds.
+/// </summary>
+static string FindIconsPath(Microsoft.Extensions.Logging.ILogger logger)
+{
+    // List of possible icon paths to check (in order of priority)
+    var possiblePaths = new[]
+    {
+        // 1. Installed via .deb package
+        "/usr/share/speech-to-text/icons",
+
+        // 2. Same directory as executable (build output)
+        Path.Combine(AppContext.BaseDirectory, "icons"),
+
+        // 3. Using assembly location (works better with symlinks)
+        Path.Combine(Path.GetDirectoryName(typeof(Program).Assembly.Location) ?? "", "icons"),
+
+        // 4. Development: assets folder relative to source
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "assets", "icons"),
+
+        // 5. Development: from project root
+        Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "assets", "icons")
+    };
+
+    foreach (var path in possiblePaths)
+    {
+        var fullPath = Path.GetFullPath(path);
+        if (Directory.Exists(fullPath))
+        {
+            // Verify at least one expected icon exists
+            var testIcon = Path.Combine(fullPath, "trigger-speech-to-text.svg");
+            if (File.Exists(testIcon))
+            {
+                logger.LogInformation("Icons found at: {Path}", fullPath);
+                return fullPath;
+            }
+        }
+    }
+
+    // Fallback to first path even if it doesn't exist (will show warnings later)
+    var fallback = Path.Combine(AppContext.BaseDirectory, "icons");
+    logger.LogWarning("Icons directory not found, using fallback: {Path}", fallback);
+    return fallback;
 }
