@@ -121,16 +121,75 @@ var dictationService = new DictationService(
     triggerKey,
     cancelKey);
 
-var trayIconLogger = loggerFactory.CreateLogger<TrayIcon>();
-var trayIcon = new TrayIcon(trayIconLogger, dictationService, showTranscriptionAnimation);
+// Create D-Bus tray icon (new implementation that bypasses GNOME icon caching)
+var dbusTrayIconLogger = loggerFactory.CreateLogger<DBusTrayIcon>();
+var iconsPath = Path.Combine(AppContext.BaseDirectory, "icons");
+if (!Directory.Exists(iconsPath))
+{
+    iconsPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "assets", "icons");
+}
+var dbusTrayIcon = new DBusTrayIcon(dbusTrayIconLogger, iconsPath, iconSize: 22);
+
+// Create separate animated icon for transcription (second tray icon to bypass GNOME caching)
+var animatedIconLogger = loggerFactory.CreateLogger<DBusAnimatedIcon>();
+var animatedIcon = new DBusAnimatedIcon(animatedIconLogger, iconsPath, new[]
+{
+    "document-white-frame1",
+    "document-white-frame2",
+    "document-white-frame3",
+    "document-white-frame4",
+    "document-white-frame5"
+}, iconSize: 22, intervalMs: 150);
 
 var cts = new CancellationTokenSource();
 
 try
 {
-    // Initialize tray icon (must be on main thread for GTK)
-    trayIcon.Initialize();
-    Console.WriteLine("Tray icon initialized");
+    // Initialize D-Bus tray icon
+    await dbusTrayIcon.InitializeAsync();
+    await animatedIcon.InitializeAsync();
+    
+    if (dbusTrayIcon.IsActive)
+    {
+        Console.WriteLine("D-Bus tray icon initialized");
+        
+        // Set initial icon
+        dbusTrayIcon.SetIcon("trigger-speech-to-text");
+        dbusTrayIcon.SetTooltip("Speech to Text - Idle");
+        
+        // Handle state changes from DictationService
+        dictationService.StateChanged += async (_, state) =>
+        {
+            switch (state)
+            {
+                case DictationState.Idle:
+                    animatedIcon.Hide();
+                    dbusTrayIcon.SetIcon("trigger-speech-to-text");
+                    dbusTrayIcon.SetTooltip("Speech to Text - Idle");
+                    break;
+                case DictationState.Recording:
+                    animatedIcon.Hide();
+                    dbusTrayIcon.SetIcon("trigger-speech-to-text-recording");
+                    dbusTrayIcon.SetTooltip("Speech to Text - Recording...");
+                    break;
+                case DictationState.Transcribing:
+                    dbusTrayIcon.SetIcon("trigger-speech-to-text");
+                    dbusTrayIcon.SetTooltip("Speech to Text - Transcribing...");
+                    await animatedIcon.ShowAsync();
+                    break;
+            }
+        };
+        
+        // Handle click on tray icon (toggle recording)
+        dbusTrayIcon.OnClicked += () =>
+        {
+            logger.LogInformation("Tray icon clicked");
+        };
+    }
+    else
+    {
+        logger.LogWarning("D-Bus tray icon failed to initialize, continuing without tray icon");
+    }
 
     // Start keyboard monitoring in background
     _ = Task.Run(async () =>
@@ -150,7 +209,7 @@ try
     });
 
     Console.WriteLine($"Keyboard monitoring started ({triggerKey} to trigger)");
-    Console.WriteLine("Press Ctrl+C or use tray menu to exit");
+    Console.WriteLine("Press Ctrl+C to exit");
     Console.WriteLine();
 
     // Handle Ctrl+C
@@ -159,11 +218,17 @@ try
         e.Cancel = true;
         Console.WriteLine("\nCtrl+C pressed - shutting down...");
         cts.Cancel();
-        trayIcon.QuitMainLoop();
     };
 
-    // Run GTK main loop (blocks until quit)
-    trayIcon.RunMainLoop();
+    // Keep the application running (no GTK main loop needed for D-Bus)
+    try
+    {
+        await Task.Delay(Timeout.Infinite, cts.Token);
+    }
+    catch (OperationCanceledException)
+    {
+        // Normal shutdown
+    }
 }
 catch (Exception ex)
 {
@@ -175,7 +240,8 @@ finally
 {
     cts.Cancel();
     dictationService.Dispose();
-    trayIcon.Dispose();
+    animatedIcon.Dispose();
+    dbusTrayIcon.Dispose();
     lockFile?.Dispose();
 
     try

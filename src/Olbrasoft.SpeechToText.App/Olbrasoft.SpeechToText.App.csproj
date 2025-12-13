@@ -8,6 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Olbrasoft.SpeechToText.App</RootNamespace>
     <AssemblyName>speech-to-text</AssemblyName>
+    <!-- Emit source generator output to file for debugging -->
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
 
     <!-- Debian package metadata -->
     <PackageId>speech-to-text</PackageId>
@@ -30,6 +32,24 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <!-- D-Bus for StatusNotifierItem tray icon (fixes GNOME icon caching) -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.2" />
+    <PackageReference Include="Tmds.DBus.SourceGenerator" Version="0.0.21" PrivateAssets="all" />
+    <!-- SVG rendering for icon pixmaps -->
+    <PackageReference Include="Svg.Skia" Version="2.0.0.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.9" />
+  </ItemGroup>
+
+  <!-- D-Bus source generator needs this to see DBusGeneratorMode metadata -->
+  <ItemGroup>
+    <CompilerVisibleItemMetadata Include="AdditionalFiles" MetadataName="DBusGeneratorMode" />
+  </ItemGroup>
+
+  <!-- D-Bus XML interfaces for StatusNotifierItem -->
+  <ItemGroup>
+    <AdditionalFiles Include="DBusXml/org.freedesktop.DBus.xml" DBusGeneratorMode="Proxy" />
+    <AdditionalFiles Include="DBusXml/org.kde.StatusNotifierWatcher.xml" DBusGeneratorMode="Proxy" />
+    <AdditionalFiles Include="DBusXml/org.kde.StatusNotifierItem.xml" DBusGeneratorMode="Handler" />
   </ItemGroup>
 
   <ItemGroup>
