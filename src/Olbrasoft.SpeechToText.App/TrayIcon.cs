@@ -33,6 +33,12 @@ public class TrayIcon : IDisposable
     private bool _isAnimating;
     private GLib.GSourceFunc? _animationCallback;
 
+    // Watchdog timer settings
+    private const int WatchdogIntervalMs = 2000;
+    private Timer? _watchdogTimer;
+    private volatile bool _isIconIdle = true;
+    private readonly object _stateLock = new();
+
     // Keep callbacks alive to prevent GC
     private GObject.GCallback? _startCallback;
     private GObject.GCallback? _stopCallback;
@@ -112,8 +118,67 @@ public class TrayIcon : IDisposable
         // Subscribe to dictation service events
         _dictationService.StateChanged += OnDictationStateChanged;
 
+        // Start watchdog timer
+        _watchdogTimer = new Timer(WatchdogCallback, null, WatchdogIntervalMs, WatchdogIntervalMs);
+
         _isInitialized = true;
-        _logger.LogInformation("TrayIcon initialized");
+        _logger.LogInformation("TrayIcon initialized with watchdog timer");
+    }
+
+    /// <summary>
+    /// Watchdog callback - checks icon state consistency every 2 seconds.
+    /// If app is idle but icon is not showing idle state, force it to idle.
+    /// </summary>
+    private void WatchdogCallback(object? state)
+    {
+        if (!_isInitialized || _disposed)
+            return;
+
+        var dictationState = _dictationService.State;
+
+        lock (_stateLock)
+        {
+            // If dictation is idle but icon is not idle, force icon to idle
+            if (dictationState == DictationState.Idle && (!_isIconIdle || _isAnimating))
+            {
+                _logger.LogWarning("Watchdog: Icon state mismatch detected (DictationState=Idle, IsIconIdle={IsIconIdle}, IsAnimating={IsAnimating}), forcing idle",
+                    _isIconIdle, _isAnimating);
+
+                // Schedule icon reset on GTK thread
+                GLib.g_idle_add(_ =>
+                {
+                    ForceIdleIcon();
+                    return false;
+                }, IntPtr.Zero);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Forces the icon to idle state, stopping any animation.
+    /// </summary>
+    private void ForceIdleIcon()
+    {
+        if (!_isInitialized || _indicator == IntPtr.Zero)
+            return;
+
+        lock (_stateLock)
+        {
+            // Stop animation if running
+            if (_isAnimating && _animationTimer != 0)
+            {
+                GLib.g_source_remove(_animationTimer);
+                _animationTimer = 0;
+                _isAnimating = false;
+            }
+
+            // Set idle icon
+            var iconPath = Path.Combine(_iconsPath, $"{IconIdle}.svg");
+            AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Idle");
+            _isIconIdle = true;
+
+            _logger.LogDebug("Watchdog: Icon forced to idle state");
+        }
     }
 
     private void CreateMenu()
@@ -178,30 +243,35 @@ public class TrayIcon : IDisposable
         if (!_isInitialized || _indicator == IntPtr.Zero)
             return;
 
-        // Handle animation for Transcribing state
-        if (state == DictationState.Transcribing && _showAnimation)
+        lock (_stateLock)
         {
-            StartAnimation();
-            return;
-        }
-        else
-        {
-            StopAnimation();
-        }
+            // Handle animation for Transcribing state
+            if (state == DictationState.Transcribing && _showAnimation)
+            {
+                StartAnimationLocked();
+                return;
+            }
+            else
+            {
+                StopAnimationLocked();
+            }
 
-        // Recording = black icon, Transcribing/Idle = white icon
-        // Animation (issue #6) provides visual feedback during transcription
-        var iconPath = state switch
-        {
-            DictationState.Recording => Path.Combine(_iconsPath, $"{IconRecording}.svg"),
-            _ => Path.Combine(_iconsPath, $"{IconIdle}.svg")
-        };
+            // Recording = black icon, Transcribing/Idle = white icon
+            // Animation (issue #6) provides visual feedback during transcription
+            var iconPath = state switch
+            {
+                DictationState.Recording => Path.Combine(_iconsPath, $"{IconRecording}.svg"),
+                _ => Path.Combine(_iconsPath, $"{IconIdle}.svg")
+            };
 
-        AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, state.ToString());
+            AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, state.ToString());
+            _isIconIdle = (state == DictationState.Idle);
+        }
     }
 
-    private void StartAnimation()
+    private void StartAnimationLocked()
     {
+        // Must be called with _stateLock held
         if (_isAnimating)
             return;
 
@@ -211,6 +281,7 @@ public class TrayIcon : IDisposable
             _logger.LogWarning("Animation icons not found, using static icon");
             var iconPath = Path.Combine(_iconsPath, $"{IconRecording}.svg");
             AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Transcribing");
+            _isIconIdle = false;
             return;
         }
 
@@ -218,11 +289,13 @@ public class TrayIcon : IDisposable
         _animationCallback = AnimateFrame;
         _animationTimer = GLib.g_timeout_add(AnimationIntervalMs, _animationCallback, IntPtr.Zero);
         _isAnimating = true;
+        _isIconIdle = false;
         _logger.LogDebug("Tray icon animation started");
     }
 
-    private void StopAnimation()
+    private void StopAnimationLocked()
     {
+        // Must be called with _stateLock held
         if (!_isAnimating)
             return;
 
@@ -237,6 +310,7 @@ public class TrayIcon : IDisposable
         // Reset icon to idle state
         var iconPath = Path.Combine(_iconsPath, $"{IconIdle}.svg");
         AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Idle");
+        _isIconIdle = true;
 
         _logger.LogDebug("Tray icon animation stopped, icon reset to idle");
     }
@@ -299,10 +373,17 @@ public class TrayIcon : IDisposable
 
         _dictationService.StateChanged -= OnDictationStateChanged;
 
+        // Stop watchdog timer
+        _watchdogTimer?.Dispose();
+        _watchdogTimer = null;
+
         // Stop animation if running
-        if (_isAnimating && _animationTimer != 0)
+        lock (_stateLock)
         {
-            GLib.g_source_remove(_animationTimer);
+            if (_isAnimating && _animationTimer != 0)
+            {
+                GLib.g_source_remove(_animationTimer);
+            }
         }
 
         _disposed = true;
