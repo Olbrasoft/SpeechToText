@@ -24,6 +24,7 @@ public class DictationService : IDisposable
     private readonly IAudioRecorder _audioRecorder;
     private readonly ISpeechTranscriber _speechTranscriber;
     private readonly ITextTyper _textTyper;
+    private readonly TypingSoundPlayer? _typingSoundPlayer;
 
     private DictationState _state = DictationState.Idle;
     private CancellationTokenSource? _cts;
@@ -44,13 +45,17 @@ public class DictationService : IDisposable
         IKeyboardMonitor keyboardMonitor,
         IAudioRecorder audioRecorder,
         ISpeechTranscriber speechTranscriber,
-        ITextTyper textTyper)
+        ITextTyper textTyper,
+        TypingSoundPlayer? typingSoundPlayer = null,
+        KeyCode triggerKey = KeyCode.CapsLock)
     {
         _logger = logger;
         _keyboardMonitor = keyboardMonitor;
         _audioRecorder = audioRecorder;
         _speechTranscriber = speechTranscriber;
         _textTyper = textTyper;
+        _typingSoundPlayer = typingSoundPlayer;
+        _triggerKey = triggerKey;
     }
 
     /// <summary>
@@ -78,22 +83,20 @@ public class DictationService : IDisposable
         if (e.Key != _triggerKey)
             return;
 
-        // Small delay to let LED state update
-        Thread.Sleep(50);
+        _logger.LogDebug("{TriggerKey} released, current state: {State}", _triggerKey, _state);
 
-        var capsLockOn = _keyboardMonitor.IsCapsLockOn();
-        _logger.LogDebug("CapsLock released - LED: {CapsLockOn}, State: {State}", capsLockOn, _state);
-
-        if (capsLockOn && _state == DictationState.Idle)
+        // Toggle logic: first press starts recording, second press stops and transcribes
+        if (_state == DictationState.Idle)
         {
-            _logger.LogInformation("CapsLock ON - starting dictation");
+            _logger.LogInformation("{TriggerKey} pressed - starting dictation", _triggerKey);
             _ = Task.Run(() => StartDictationAsync());
         }
-        else if (!capsLockOn && _state == DictationState.Recording)
+        else if (_state == DictationState.Recording)
         {
-            _logger.LogInformation("CapsLock OFF - stopping dictation");
+            _logger.LogInformation("{TriggerKey} pressed - stopping dictation", _triggerKey);
             _ = Task.Run(() => StopDictationAsync());
         }
+        // If Transcribing, ignore the key press
     }
 
     /// <summary>
@@ -150,8 +153,14 @@ public class DictationService : IDisposable
 
             SetState(DictationState.Transcribing);
 
+            // Start transcription sound loop
+            _typingSoundPlayer?.StartLoop();
+
             _logger.LogInformation("Starting transcription...");
             var result = await _speechTranscriber.TranscribeAsync(audioData);
+
+            // Stop transcription sound loop
+            _typingSoundPlayer?.StopLoop();
 
             if (result.Success && !string.IsNullOrWhiteSpace(result.Text))
             {
@@ -172,6 +181,8 @@ public class DictationService : IDisposable
         }
         finally
         {
+            // Ensure sound is stopped even on error
+            _typingSoundPlayer?.StopLoop();
             _cts?.Dispose();
             _cts = null;
             SetState(DictationState.Idle);
@@ -193,6 +204,7 @@ public class DictationService : IDisposable
         _keyboardMonitor.KeyReleased -= OnKeyReleased;
         _cts?.Cancel();
         _cts?.Dispose();
+        _typingSoundPlayer?.Dispose();
         _speechTranscriber.Dispose();
     }
 }

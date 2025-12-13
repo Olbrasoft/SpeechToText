@@ -33,4 +33,11 @@
     </None>
   </ItemGroup>
 
+  <!-- Copy sounds to output -->
+  <ItemGroup>
+    <None Include="sounds\*.mp3" Link="sounds\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

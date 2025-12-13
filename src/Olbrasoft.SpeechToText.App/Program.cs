@@ -16,6 +16,9 @@ var keyboardDevice = config.GetValue<string?>("Dictation:KeyboardDevice");
 var ggmlModelPath = config.GetValue<string>("Dictation:GgmlModelPath")
     ?? Path.Combine(AppContext.BaseDirectory, "models", "ggml-medium.bin");
 var whisperLanguage = config.GetValue<string>("Dictation:WhisperLanguage") ?? "cs";
+var triggerKeyName = config.GetValue<string>("Dictation:TriggerKey") ?? "CapsLock";
+var triggerKey = Enum.TryParse<KeyCode>(triggerKeyName, ignoreCase: true, out var key) ? key : KeyCode.CapsLock;
+var transcriptionSoundPath = config.GetValue<string?>("Dictation:TranscriptionSoundPath");
 
 // Setup logging
 using var loggerFactory = LoggerFactory.Create(builder =>
@@ -77,13 +80,26 @@ catch (FileNotFoundException)
 var textTyper = TextTyperFactory.Create(loggerFactory);
 logger.LogInformation("Text typer: {DisplayServer}", TextTyperFactory.GetDisplayServerName());
 
+// Create typing sound player (for audio feedback during transcription)
+TypingSoundPlayer? typingSoundPlayer = null;
+if (!string.IsNullOrWhiteSpace(transcriptionSoundPath))
+{
+    var fullSoundPath = Path.IsPathRooted(transcriptionSoundPath)
+        ? transcriptionSoundPath
+        : Path.Combine(AppContext.BaseDirectory, transcriptionSoundPath);
+    var typingSoundLogger = loggerFactory.CreateLogger<TypingSoundPlayer>();
+    typingSoundPlayer = new TypingSoundPlayer(typingSoundLogger, fullSoundPath);
+}
+
 var dictationServiceLogger = loggerFactory.CreateLogger<DictationService>();
 var dictationService = new DictationService(
     dictationServiceLogger,
     keyboardMonitor,
     audioRecorder,
     speechTranscriber,
-    textTyper);
+    textTyper,
+    typingSoundPlayer,
+    triggerKey);
 
 var trayIconLogger = loggerFactory.CreateLogger<TrayIcon>();
 var trayIcon = new TrayIcon(trayIconLogger, dictationService);
@@ -113,7 +129,7 @@ try
         }
     });
 
-    Console.WriteLine("Keyboard monitoring started (CapsLock to trigger)");
+    Console.WriteLine($"Keyboard monitoring started ({triggerKey} to trigger)");
     Console.WriteLine("Press Ctrl+C or use tray menu to exit");
     Console.WriteLine();
 
