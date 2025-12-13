@@ -127,7 +127,7 @@ public class TrayIcon : IDisposable
 
     /// <summary>
     /// Watchdog callback - checks icon state consistency every 2 seconds.
-    /// If app is idle but icon is not showing idle state, force it to idle.
+    /// Aggressively forces idle icon when app is idle, regardless of tracked state.
     /// </summary>
     private void WatchdogCallback(object? state)
     {
@@ -136,21 +136,16 @@ public class TrayIcon : IDisposable
 
         var dictationState = _dictationService.State;
 
-        lock (_stateLock)
+        // Always force idle icon when app is idle - belt-and-suspenders approach
+        // This catches race conditions where tracked state doesn't match actual icon
+        if (dictationState == DictationState.Idle)
         {
-            // If dictation is idle but icon is not idle, force icon to idle
-            if (dictationState == DictationState.Idle && (!_isIconIdle || _isAnimating))
+            // Schedule icon reset on GTK thread unconditionally
+            GLib.g_idle_add(_ =>
             {
-                _logger.LogWarning("Watchdog: Icon state mismatch detected (DictationState=Idle, IsIconIdle={IsIconIdle}, IsAnimating={IsAnimating}), forcing idle",
-                    _isIconIdle, _isAnimating);
-
-                // Schedule icon reset on GTK thread
-                GLib.g_idle_add(_ =>
-                {
-                    ForceIdleIcon();
-                    return false;
-                }, IntPtr.Zero);
-            }
+                ForceIdleIcon();
+                return false;
+            }, IntPtr.Zero);
         }
     }
 
@@ -295,16 +290,23 @@ public class TrayIcon : IDisposable
     private void StopAnimationLocked()
     {
         // Must be called with _stateLock held
-        // Always try to stop timer, even if _isAnimating is false (race condition safety)
+        // FIRST stop the timer source to prevent race with AnimateFrame callback
         if (_animationTimer != 0)
         {
             GLib.g_source_remove(_animationTimer);
             _animationTimer = 0;
         }
 
+        // THEN set the flag
         _isAnimating = false;
-        // Note: Icon is set by UpdateIcon after calling this method
-        _logger.LogDebug("Tray icon animation stopped");
+
+        // AND immediately set idle icon here as backup (belt-and-suspenders)
+        // This prevents race condition where AnimateFrame runs after flag is set
+        var iconPath = Path.Combine(_iconsPath, $"{IconIdle}.svg");
+        AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Idle");
+        _isIconIdle = true;
+
+        _logger.LogDebug("Tray icon animation stopped, icon forced to idle");
     }
 
     private bool AnimateFrame(IntPtr data)
