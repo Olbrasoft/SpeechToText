@@ -3,10 +3,20 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Olbrasoft.SpeechToText.App</RootNamespace>
-    <AssemblyName>Olbrasoft.SpeechToText.App</AssemblyName>
+    <AssemblyName>speech-to-text</AssemblyName>
+
+    <!-- Debian package metadata -->
+    <PackageId>speech-to-text</PackageId>
+    <Version>1.0.0</Version>
+    <Description>Voice transcription using Whisper AI</Description>
+    <Authors>Olbrasoft</Authors>
+    <DebMaintainer>Olbrasoft</DebMaintainer>
+    <PostInstallScript>../../debian/postinst</PostInstallScript>
+    <PostRemoveScript>../../debian/postrm</PostRemoveScript>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +28,10 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+    <PackageReference Include="Packaging.Targets" Version="0.1.232">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
@@ -41,6 +55,61 @@
     <None Include="sounds\*.mp3" Link="sounds\%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <!-- Freedesktop files for debian package -->
+  <ItemGroup>
+    <!-- Desktop entry -->
+    <Content Include="..\..\data\io.olbrasoft.SpeechToText.desktop">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/applications/io.olbrasoft.SpeechToText.desktop</LinuxPath>
+    </Content>
+
+    <!-- AppStream metainfo -->
+    <Content Include="..\..\data\io.olbrasoft.SpeechToText.metainfo.xml">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/metainfo/io.olbrasoft.SpeechToText.metainfo.xml</LinuxPath>
+    </Content>
+
+    <!-- Icons - scalable -->
+    <Content Include="..\..\data\icons\hicolor\scalable\apps\io.olbrasoft.SpeechToText.svg">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/scalable/apps/io.olbrasoft.SpeechToText.svg</LinuxPath>
+    </Content>
+
+    <!-- Icons - various sizes (Link with unique paths to avoid conflicts) -->
+    <Content Include="..\..\data\icons\hicolor\16x16\apps\io.olbrasoft.SpeechToText.png" Link="icons\16x16\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/16x16/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
+    <Content Include="..\..\data\icons\hicolor\22x22\apps\io.olbrasoft.SpeechToText.png" Link="icons\22x22\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/22x22/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
+    <Content Include="..\..\data\icons\hicolor\24x24\apps\io.olbrasoft.SpeechToText.png" Link="icons\24x24\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/24x24/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
+    <Content Include="..\..\data\icons\hicolor\32x32\apps\io.olbrasoft.SpeechToText.png" Link="icons\32x32\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/32x32/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
+    <Content Include="..\..\data\icons\hicolor\48x48\apps\io.olbrasoft.SpeechToText.png" Link="icons\48x48\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/48x48/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
+    <Content Include="..\..\data\icons\hicolor\64x64\apps\io.olbrasoft.SpeechToText.png" Link="icons\64x64\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/64x64/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
+    <Content Include="..\..\data\icons\hicolor\128x128\apps\io.olbrasoft.SpeechToText.png" Link="icons\128x128\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/128x128/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
+    <Content Include="..\..\data\icons\hicolor\256x256\apps\io.olbrasoft.SpeechToText.png" Link="icons\256x256\io.olbrasoft.SpeechToText.png">
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <LinuxPath>/usr/share/icons/hicolor/256x256/apps/io.olbrasoft.SpeechToText.png</LinuxPath>
+    </Content>
   </ItemGroup>
 
 </Project>
