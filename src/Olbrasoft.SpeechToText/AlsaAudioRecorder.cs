@@ -254,6 +254,8 @@ public class AlsaAudioRecorder : IAudioRecorder
         if (_disposed)
             return;
 
+        _disposed = true;
+
         if (_isRecording)
         {
             StopRecordingAsync().GetAwaiter().GetResult();
@@ -263,7 +265,26 @@ public class AlsaAudioRecorder : IAudioRecorder
         _recordProcess?.Dispose();
         _recordedData.Clear();
 
+        GC.SuppressFinalize(this);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
         _disposed = true;
+
+        if (_isRecording)
+        {
+            await StopRecordingAsync();
+        }
+
+        _cts?.Dispose();
+        _recordProcess?.Dispose();
+        _recordedData.Clear();
+
         GC.SuppressFinalize(this);
     }
 }
