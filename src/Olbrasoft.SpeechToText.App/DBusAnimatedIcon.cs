@@ -63,8 +63,9 @@ public class DBusAnimatedIcon : IDisposable
 
             _dBus = new OrgFreedesktopDBusProxy(_connection, "org.freedesktop.DBus", "/org/freedesktop/DBus");
 
-            // Use different path to avoid conflicts with main icon
-            _pathHandler = new PathHandler("/AnimatedIcon");
+            // Use standard StatusNotifierItem path - each icon has its own D-Bus connection
+            // so there's no conflict with the main icon
+            _pathHandler = new PathHandler("/StatusNotifierItem");
             _sniHandler = new AnimatedIconHandler(_connection, _logger);
 
             _pathHandler.Add(_sniHandler);
