@@ -18,8 +18,9 @@ public enum DictationState
 /// <summary>
 /// Orchestrates the dictation workflow: recording, transcription, and text typing.
 /// </summary>
-public class DictationService : IDisposable
+public class DictationService : IDisposable, IAsyncDisposable
 {
+    private bool _disposed;
     private readonly ILogger<DictationService> _logger;
     private readonly IKeyboardMonitor _keyboardMonitor;
     private readonly IAudioRecorder _audioRecorder;
@@ -258,10 +259,35 @@ public class DictationService : IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
         _keyboardMonitor.KeyReleased -= OnKeyReleased;
         _cts?.Cancel();
         _cts?.Dispose();
         _typingSoundPlayer?.Dispose();
         _speechTranscriber.Dispose();
+
+        GC.SuppressFinalize(this);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+        _keyboardMonitor.KeyReleased -= OnKeyReleased;
+
+        // Async cleanup
+        await StopMonitoringAsync();
+
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _typingSoundPlayer?.Dispose();
+        _speechTranscriber.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }

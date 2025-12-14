@@ -170,15 +170,35 @@ public class NAudioRecorder : IAudioRecorder
         if (_disposed)
             return;
 
+        _disposed = true;
+
         if (_isRecording)
         {
-            StopRecordingAsync().Wait();
+            StopRecordingAsync().GetAwaiter().GetResult();
         }
 
         _waveIn?.Dispose();
         _recordedData.Clear();
 
+        GC.SuppressFinalize(this);
+    }
+
+    /// <inheritdoc/>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
         _disposed = true;
+
+        if (_isRecording)
+        {
+            await StopRecordingAsync();
+        }
+
+        _waveIn?.Dispose();
+        _recordedData.Clear();
+
         GC.SuppressFinalize(this);
     }
 }

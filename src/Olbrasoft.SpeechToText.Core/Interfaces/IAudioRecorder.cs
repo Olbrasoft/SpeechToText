@@ -1,4 +1,4 @@
-namespace Olbrasoft.SpeechToText;
+namespace Olbrasoft.SpeechToText.Core.Interfaces;
 
 /// <summary>
 /// Interface for audio recording from microphone.
@@ -45,4 +45,26 @@ public interface IAudioRecorder : IDisposable, IAsyncDisposable
     /// Gets all recorded audio data as a byte array.
     /// </summary>
     byte[] GetRecordedData();
+}
+
+/// <summary>
+/// Event args for audio data chunks.
+/// </summary>
+public class AudioDataEventArgs : EventArgs
+{
+    /// <summary>
+    /// Gets the audio data.
+    /// </summary>
+    public byte[] Data { get; }
+
+    /// <summary>
+    /// Gets the timestamp when the data was captured.
+    /// </summary>
+    public DateTime Timestamp { get; }
+
+    public AudioDataEventArgs(byte[] data, DateTime timestamp)
+    {
+        Data = data;
+        Timestamp = timestamp;
+    }
 }
