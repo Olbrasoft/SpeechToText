@@ -3,7 +3,7 @@ namespace Olbrasoft.SpeechToText;
 /// <summary>
 /// Interface for audio recording from microphone.
 /// </summary>
-public interface IAudioRecorder : IDisposable
+public interface IAudioRecorder : IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Event raised when audio data chunk is available.
