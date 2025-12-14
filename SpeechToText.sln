@@ -5,17 +5,23 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Olbrasoft.SpeechToText", "src\Olbrasoft.SpeechToText\Olbrasoft.SpeechToText.csproj", "{AE86F209-8F75-4257-9B7C-39E09D4465CE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText", "src\SpeechToText\SpeechToText.csproj", "{AE86F209-8F75-4257-9B7C-39E09D4465CE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Olbrasoft.SpeechToText.Service", "src\Olbrasoft.SpeechToText.Service\Olbrasoft.SpeechToText.Service.csproj", "{D7701FA8-FA94-4383-B3F3-C2B744443A0E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText.Service", "src\SpeechToText.Service\SpeechToText.Service.csproj", "{D7701FA8-FA94-4383-B3F3-C2B744443A0E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Olbrasoft.SpeechToText.App", "src\Olbrasoft.SpeechToText.App\Olbrasoft.SpeechToText.App.csproj", "{BBFF06DC-815C-49A6-BE0E-8A65634A6649}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText.App", "src\SpeechToText.App\SpeechToText.App.csproj", "{BBFF06DC-815C-49A6-BE0E-8A65634A6649}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Olbrasoft.SpeechToText.Tests", "tests\Olbrasoft.SpeechToText.Tests\Olbrasoft.SpeechToText.Tests.csproj", "{083AAEE2-22C2-44FC-8D34-5464C26D38CD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText.Tests", "tests\SpeechToText.Tests\SpeechToText.Tests.csproj", "{083AAEE2-22C2-44FC-8D34-5464C26D38CD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Olbrasoft.SpeechToText.Core", "src\Olbrasoft.SpeechToText.Core\Olbrasoft.SpeechToText.Core.csproj", "{9E5A7ECE-3642-48B0-8386-A5CFA210B853}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText.Core", "src\SpeechToText.Core\SpeechToText.Core.csproj", "{9E5A7ECE-3642-48B0-8386-A5CFA210B853}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText.Core.Tests", "tests\SpeechToText.Core.Tests\SpeechToText.Core.Tests.csproj", "{C537AA11-FD94-4B3A-817C-00648E999519}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText.App.Tests", "tests\SpeechToText.App.Tests\SpeechToText.App.Tests.csproj", "{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpeechToText.Service.Tests", "tests\SpeechToText.Service.Tests\SpeechToText.Service.Tests.csproj", "{18F17F64-6CEA-4824-8087-7A3A03428E0E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -87,6 +93,42 @@ Global
 		{9E5A7ECE-3642-48B0-8386-A5CFA210B853}.Release|x64.Build.0 = Release|Any CPU
 		{9E5A7ECE-3642-48B0-8386-A5CFA210B853}.Release|x86.ActiveCfg = Release|Any CPU
 		{9E5A7ECE-3642-48B0-8386-A5CFA210B853}.Release|x86.Build.0 = Release|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Debug|x64.Build.0 = Debug|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Debug|x86.Build.0 = Debug|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Release|x64.ActiveCfg = Release|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Release|x64.Build.0 = Release|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Release|x86.ActiveCfg = Release|Any CPU
+		{C537AA11-FD94-4B3A-817C-00648E999519}.Release|x86.Build.0 = Release|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Debug|x64.Build.0 = Debug|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Debug|x86.Build.0 = Debug|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Release|x64.ActiveCfg = Release|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Release|x64.Build.0 = Release|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Release|x86.ActiveCfg = Release|Any CPU
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F}.Release|x86.Build.0 = Release|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Debug|x64.Build.0 = Debug|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Debug|x86.Build.0 = Debug|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Release|x64.ActiveCfg = Release|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Release|x64.Build.0 = Release|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Release|x86.ActiveCfg = Release|Any CPU
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,5 +139,8 @@ Global
 		{BBFF06DC-815C-49A6-BE0E-8A65634A6649} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{083AAEE2-22C2-44FC-8D34-5464C26D38CD} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{9E5A7ECE-3642-48B0-8386-A5CFA210B853} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{C537AA11-FD94-4B3A-817C-00648E999519} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{F87ABBB7-3EEE-4654-8DAD-57BAEA6B204F} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{18F17F64-6CEA-4824-8087-7A3A03428E0E} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

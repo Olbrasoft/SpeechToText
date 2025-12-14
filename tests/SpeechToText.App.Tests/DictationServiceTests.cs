@@ -5,7 +5,7 @@ using Olbrasoft.SpeechToText.App;
 using Olbrasoft.SpeechToText.Speech;
 using Olbrasoft.SpeechToText.TextInput;
 
-namespace Olbrasoft.SpeechToText.Tests;
+namespace Olbrasoft.SpeechToText.App.Tests;
 
 public class DictationServiceTests : IDisposable
 {

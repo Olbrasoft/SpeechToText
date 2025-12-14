@@ -1,4 +1,4 @@
-namespace Olbrasoft.SpeechToText;
+namespace Olbrasoft.SpeechToText.Core.Models;
 
 /// <summary>
 /// Event arguments for audio data availability.

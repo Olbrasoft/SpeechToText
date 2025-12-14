@@ -20,7 +20,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Olbrasoft.SpeechToText\Olbrasoft.SpeechToText.csproj" />
+    <ProjectReference Include="..\SpeechToText.Core\SpeechToText.Core.csproj" />
+    <ProjectReference Include="..\SpeechToText\SpeechToText.csproj" />
   </ItemGroup>
 
   <ItemGroup>
