@@ -51,7 +51,7 @@ jobs:
       
       - name: Create .deb package
         run: |
-          dotnet msbuild src/Olbrasoft.SpeechToText.App/Olbrasoft.SpeechToText.App.csproj \
+          dotnet msbuild src/SpeechToText.App/SpeechToText.App.csproj \
             /t:CreateDeb /p:Configuration=Release /p:Version=${{ steps.version.outputs.version }}
       
       - name: Find .deb file
