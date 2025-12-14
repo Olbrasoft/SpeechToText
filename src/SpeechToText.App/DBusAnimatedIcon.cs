@@ -76,6 +76,7 @@ public class DBusAnimatedIcon : IDisposable
 
         _dBus = new OrgFreedesktopDBusProxy(_connection, "org.freedesktop.DBus", "/org/freedesktop/DBus");
 
+        // Standard path as per StatusNotifierItem spec
         _pathHandler = new PathHandler("/StatusNotifierItem");
         _sniHandler = new AnimatedIconHandler(_connection, _logger);
 
@@ -151,9 +152,6 @@ public class DBusAnimatedIcon : IDisposable
                 return;
             }
 
-            var pid = Environment.ProcessId;
-            var tid = Interlocked.Increment(ref s_instanceId);
-
             // Add handler if needed
             if (_sniHandler!.PathHandler is null)
                 _pathHandler!.Add(_sniHandler);
@@ -161,13 +159,14 @@ public class DBusAnimatedIcon : IDisposable
             _connection!.RemoveMethodHandler(_pathHandler!.Path);
             _connection.AddMethodHandler(_pathHandler);
 
-            _sysTrayServiceName = $"org.kde.StatusNotifierItem-{pid}-{tid}";
+            // Register with unique connection name only (issue #62)
+            // Using well-known service name causes duplicate detection by some watchers
+            _sysTrayServiceName = _connection.UniqueName!;
 
             // Set first frame BEFORE registration so GNOME Shell reads valid pixmap
             _currentFrameIndex = 0;
             SetCurrentFrame();
 
-            await _dBus!.RequestNameAsync(_sysTrayServiceName, 0);
             await _statusNotifierWatcher.RegisterStatusNotifierItemAsync(_sysTrayServiceName);
 
             _isVisible = true;
@@ -197,11 +196,7 @@ public class DBusAnimatedIcon : IDisposable
 
         try
         {
-            if (_sysTrayServiceName is not null && _dBus is not null)
-            {
-                _ = _dBus.ReleaseNameAsync(_sysTrayServiceName);
-            }
-
+            // No ReleaseNameAsync - we use unique connection name, not well-known name (issue #62)
             if (_sniHandler is not null && _pathHandler is not null)
             {
                 _pathHandler.Remove(_sniHandler);

@@ -26,6 +26,7 @@ public class DBusTrayIcon : IDisposable
     private PathHandler? _pathHandler;
     private DBusMenuHandler? _menuHandler;
     private PathHandler? _menuPathHandler;
+
     private IDisposable? _serviceWatchDisposable;
 
     private string? _sysTrayServiceName;
@@ -78,21 +79,16 @@ public class DBusTrayIcon : IDisposable
 
             _dBus = new OrgFreedesktopDBusProxy(_connection, "org.freedesktop.DBus", "/org/freedesktop/DBus");
 
+            // Standard paths as per StatusNotifierItem spec
             _pathHandler = new PathHandler("/StatusNotifierItem");
-            _sniHandler = new StatusNotifierItemHandler(_connection, _logger);
+            _sniHandler = new StatusNotifierItemHandler(_connection, _logger, "/MenuBar");
             _sniHandler.ActivationDelegate += () => OnClicked?.Invoke();
 
-            // NOTE: Do NOT add the handler here - it will be added in CreateTrayIconAsync()
-            // Adding it here causes StatusNotifierWatcher to detect a second icon
-            // before RegisterStatusNotifierItemAsync is called (issue #62)
-
-            // Register D-Bus menu handler at /MenuBar path
+            // D-Bus menu handler at /MenuBar
             _menuPathHandler = new PathHandler("/MenuBar");
             _menuHandler = new DBusMenuHandler(_connection, _logger);
             _menuHandler.OnQuitRequested += () => OnQuitRequested?.Invoke();
             _menuHandler.OnAboutRequested += () => OnAboutRequested?.Invoke();
-
-            // NOTE: Menu handler will also be added in CreateTrayIconAsync() for consistency
 
             IsActive = true;
 
@@ -165,9 +161,6 @@ public class DBusTrayIcon : IDisposable
 
         try
         {
-            var pid = Environment.ProcessId;
-            var tid = Interlocked.Increment(ref s_instanceId);
-
             // Add SNI handler if needed
             if (_sniHandler!.PathHandler is null)
                 _pathHandler!.Add(_sniHandler);
@@ -182,8 +175,9 @@ public class DBusTrayIcon : IDisposable
             _connection.RemoveMethodHandler(_menuPathHandler!.Path);
             _connection.AddMethodHandler(_menuPathHandler);
 
-            _sysTrayServiceName = $"org.kde.StatusNotifierItem-{pid}-{tid}";
-            await _dBus!.RequestNameAsync(_sysTrayServiceName, 0);
+            // Register with unique connection name only (issue #62)
+            // Using well-known service name causes duplicate detection by some watchers
+            _sysTrayServiceName = _connection.UniqueName!;
             await _statusNotifierWatcher.RegisterStatusNotifierItemAsync(_sysTrayServiceName);
 
             // Set initial state
@@ -205,7 +199,7 @@ public class DBusTrayIcon : IDisposable
 
         try
         {
-            _ = _dBus!.ReleaseNameAsync(_sysTrayServiceName);
+            // No ReleaseNameAsync - we use unique connection name, not well-known name (issue #62)
             _pathHandler!.Remove(_sniHandler);
             _connection.RemoveMethodHandler(_pathHandler.Path);
 
@@ -398,7 +392,7 @@ internal class StatusNotifierItemHandler : OrgKdeStatusNotifierItemHandler
 {
     private readonly ILogger _logger;
 
-    public StatusNotifierItemHandler(Connection connection, ILogger logger)
+    public StatusNotifierItemHandler(Connection connection, ILogger logger, string menuPath)
     {
         Connection = connection;
         _logger = logger;
@@ -416,7 +410,7 @@ internal class StatusNotifierItemHandler : OrgKdeStatusNotifierItemHandler
         AttentionIconPixmap = Array.Empty<(int, int, byte[])>();
         AttentionMovieName = "";
         IconThemePath = "";
-        Menu = new ObjectPath("/MenuBar");
+        Menu = new ObjectPath(menuPath); // Use unique menu path (issue #62)
         ItemIsMenu = false;
         ToolTip = ("", Array.Empty<(int, int, byte[])>(), "", "");
         WindowId = 0;
