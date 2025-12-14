@@ -3,6 +3,7 @@ using Olbrasoft.SpeechToText.Speech;
 using Olbrasoft.SpeechToText;
 using Olbrasoft.SpeechToText.Service;
 using Olbrasoft.SpeechToText.Service.Hubs;
+using Olbrasoft.SpeechToText.Audio;
 using Olbrasoft.SpeechToText.Service.Services;
 using Olbrasoft.SpeechToText.Service.Tray;
 using Olbrasoft.SpeechToText.TextInput;
@@ -107,7 +108,12 @@ builder.Services.AddSingleton<ITextTyper>(sp =>
 });
 
 // Typing sound player for transcription feedback
-builder.Services.AddSingleton<TypingSoundPlayer>();
+builder.Services.AddSingleton(sp =>
+{
+    var logger = sp.GetRequiredService<ILogger<TypingSoundPlayer>>();
+    var soundsDirectory = Path.Combine(AppContext.BaseDirectory, "sounds");
+    return TypingSoundPlayer.CreateFromDirectory(logger, soundsDirectory);
+});
 
 // Transcription tray service (not from DI - needs special lifecycle with GTK)
 builder.Services.AddSingleton<TranscriptionTrayService>();

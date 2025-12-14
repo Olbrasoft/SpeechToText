@@ -1,12 +1,12 @@
 using System.Runtime.InteropServices;
 
-namespace Olbrasoft.SpeechToText.App;
+namespace Olbrasoft.SpeechToText.Interop;
 
 /// <summary>
 /// P/Invoke bindings for libayatana-appindicator3.
 /// Provides system tray icon functionality on Linux/GNOME.
 /// </summary>
-internal static class AppIndicator
+public static class AppIndicator
 {
     private const string LibName = "libayatana-appindicator3.so.1";
 
@@ -51,7 +51,7 @@ internal static class AppIndicator
 /// <summary>
 /// P/Invoke bindings for GTK3.
 /// </summary>
-internal static class Gtk
+public static class Gtk
 {
     private const string LibName = "libgtk-3.so.0";
 
@@ -120,7 +120,7 @@ internal static class Gtk
 /// <summary>
 /// P/Invoke bindings for GLib.
 /// </summary>
-internal static class GLib
+public static class GLib
 {
     private const string LibName = "libglib-2.0.so.0";
 
@@ -140,7 +140,7 @@ internal static class GLib
 /// <summary>
 /// P/Invoke bindings for GObject.
 /// </summary>
-internal static class GObject
+public static class GObject
 {
     private const string LibName = "libgobject-2.0.so.0";
 

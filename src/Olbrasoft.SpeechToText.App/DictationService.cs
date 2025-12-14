@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Olbrasoft.SpeechToText.Audio;
 using Olbrasoft.SpeechToText.Speech;
 using Olbrasoft.SpeechToText.TextInput;
 
