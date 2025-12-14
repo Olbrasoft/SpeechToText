@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Olbrasoft.SpeechToText.Interop;
 
 namespace Olbrasoft.SpeechToText.App;
 

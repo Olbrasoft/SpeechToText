@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
+using Olbrasoft.SpeechToText.Audio;
+using Olbrasoft.SpeechToText.Interop;
 using Olbrasoft.SpeechToText.Service.Models;
 using Olbrasoft.SpeechToText.Service.Services;
 
