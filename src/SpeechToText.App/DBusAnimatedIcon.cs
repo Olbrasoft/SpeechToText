@@ -45,42 +45,44 @@ public class DBusAnimatedIcon : IDisposable
     }
 
     /// <summary>
-    /// Initializes the D-Bus connection (but doesn't show the icon yet).
+    /// Initializes the animated icon (pre-caches frames only, D-Bus connection is created lazily in ShowAsync).
     /// </summary>
-    public async Task InitializeAsync()
+    public Task InitializeAsync()
     {
-        try
-        {
-            _connection = new Connection(Address.Session!);
-            await _connection.ConnectAsync();
+        // Pre-cache all animation frames (no D-Bus connection yet - issue #62)
+        // D-Bus connection is created lazily in ShowAsync() to avoid registering
+        // a second tray icon on startup
+        _logger.LogDebug("Loading animation frames from: {IconsPath}", _iconRenderer.IconsPath);
+        _iconRenderer.PreCacheIcons(_frameNames);
 
-            _dBus = new OrgFreedesktopDBusProxy(_connection, "org.freedesktop.DBus", "/org/freedesktop/DBus");
+        IsActive = true;
+        _logger.LogInformation("DBusAnimatedIcon initialized with {CachedCount}/{TotalCount} frames cached (D-Bus lazy)",
+            _iconRenderer.CacheCount, _frameNames.Length);
 
-            // Use standard StatusNotifierItem path - each icon has its own D-Bus connection
-            // so there's no conflict with the main icon
-            _pathHandler = new PathHandler("/StatusNotifierItem");
-            _sniHandler = new AnimatedIconHandler(_connection, _logger);
+        return Task.CompletedTask;
+    }
 
-            // NOTE: Do NOT add the handler here - it will be added in ShowAsync()
-            // Adding it here causes GNOME Shell to detect and display a second tray icon
-            // even before RegisterStatusNotifierItemAsync is called (issue #62)
+    /// <summary>
+    /// Creates D-Bus connection and sets up StatusNotifierWatcher.
+    /// Called lazily from ShowAsync().
+    /// </summary>
+    private async Task EnsureConnectedAsync()
+    {
+        if (_connection is not null)
+            return;
 
-            // Pre-cache all animation frames
-            _logger.LogDebug("Loading animation frames from: {IconsPath}", _iconRenderer.IconsPath);
-            _iconRenderer.PreCacheIcons(_frameNames);
+        _connection = new Connection(Address.Session!);
+        await _connection.ConnectAsync();
 
-            // Watch for StatusNotifierWatcher
-            await WatchAsync();
+        _dBus = new OrgFreedesktopDBusProxy(_connection, "org.freedesktop.DBus", "/org/freedesktop/DBus");
 
-            IsActive = true;
-            _logger.LogInformation("DBusAnimatedIcon initialized with {CachedCount}/{TotalCount} frames cached",
-                _iconRenderer.CacheCount, _frameNames.Length);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to initialize DBusAnimatedIcon");
-            IsActive = false;
-        }
+        _pathHandler = new PathHandler("/StatusNotifierItem");
+        _sniHandler = new AnimatedIconHandler(_connection, _logger);
+
+        // Watch for StatusNotifierWatcher
+        await WatchAsync();
+
+        _logger.LogDebug("DBusAnimatedIcon D-Bus connection established");
     }
 
     private async Task WatchAsync()
@@ -132,19 +134,27 @@ public class DBusAnimatedIcon : IDisposable
     /// </summary>
     public async Task ShowAsync()
     {
-        if (_isDisposed || !_serviceConnected || _isVisible || _statusNotifierWatcher is null)
+        if (_isDisposed || _isVisible)
         {
-            _logger.LogInformation("ShowAsync skipped: disposed={Disposed}, connected={Connected}, visible={Visible}, watcher={HasWatcher}",
-                _isDisposed, _serviceConnected, _isVisible, _statusNotifierWatcher is not null);
+            _logger.LogDebug("ShowAsync skipped: disposed={Disposed}, visible={Visible}", _isDisposed, _isVisible);
             return;
         }
 
         try
         {
+            // Lazy D-Bus connection initialization (issue #62)
+            await EnsureConnectedAsync();
+
+            if (!_serviceConnected || _statusNotifierWatcher is null)
+            {
+                _logger.LogWarning("ShowAsync: StatusNotifierWatcher not available");
+                return;
+            }
+
             var pid = Environment.ProcessId;
             var tid = Interlocked.Increment(ref s_instanceId);
 
-            // Re-add handler if needed
+            // Add handler if needed
             if (_sniHandler!.PathHandler is null)
                 _pathHandler!.Add(_sniHandler);
 
