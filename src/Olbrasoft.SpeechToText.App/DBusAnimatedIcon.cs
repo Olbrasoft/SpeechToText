@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Tmds.DBus.SourceGenerator;
-using SkiaSharp;
-using Svg.Skia;
 using Tmds.DBus.Protocol;
 
 namespace Olbrasoft.SpeechToText.App;
@@ -15,8 +13,7 @@ public class DBusAnimatedIcon : IDisposable
     private static int s_instanceId = 1000; // Different range from main icon
 
     private readonly ILogger _logger;
-    private readonly string _iconsPath;
-    private readonly int _iconSize;
+    private readonly SvgIconRenderer _iconRenderer;
     private readonly string[] _frameNames;
     private readonly int _intervalMs;
 
@@ -37,17 +34,13 @@ public class DBusAnimatedIcon : IDisposable
     private int _currentFrameIndex;
     private readonly object _animationLock = new();
 
-    // Icon cache
-    private readonly Dictionary<string, (int, int, byte[])> _iconCache = new();
-
     public bool IsActive { get; private set; }
 
     public DBusAnimatedIcon(ILogger logger, string iconsPath, string[] frameNames, int iconSize = 22, int intervalMs = 150)
     {
         _logger = logger;
-        _iconsPath = iconsPath;
+        _iconRenderer = new SvgIconRenderer(logger, iconsPath, iconSize);
         _frameNames = frameNames;
-        _iconSize = iconSize;
         _intervalMs = intervalMs;
     }
 
@@ -71,37 +64,16 @@ public class DBusAnimatedIcon : IDisposable
             _pathHandler.Add(_sniHandler);
             _connection.AddMethodHandler(_pathHandler);
 
-            // Pre-cache all frames
-            _logger.LogDebug("Loading animation frames from: {IconsPath}", _iconsPath);
-            foreach (var frameName in _frameNames)
-            {
-                var iconPath = Path.Combine(_iconsPath, $"{frameName}.svg");
-                if (File.Exists(iconPath))
-                {
-                    var pixmap = RenderSvgToArgb(iconPath, _iconSize);
-                    if (pixmap.HasValue)
-                    {
-                        _iconCache[frameName] = pixmap.Value;
-                        _logger.LogDebug("Cached frame {FrameName}: {Width}x{Height}, {Bytes} bytes",
-                            frameName, pixmap.Value.Item1, pixmap.Value.Item2, pixmap.Value.Item3.Length);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Failed to render SVG: {IconPath}", iconPath);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Frame SVG not found: {IconPath}", iconPath);
-                }
-            }
+            // Pre-cache all animation frames
+            _logger.LogDebug("Loading animation frames from: {IconsPath}", _iconRenderer.IconsPath);
+            _iconRenderer.PreCacheIcons(_frameNames);
 
             // Watch for StatusNotifierWatcher
             await WatchAsync();
 
             IsActive = true;
             _logger.LogInformation("DBusAnimatedIcon initialized with {CachedCount}/{TotalCount} frames cached",
-                _iconCache.Count, _frameNames.Length);
+                _iconRenderer.CacheCount, _frameNames.Length);
         }
         catch (Exception ex)
         {
@@ -256,69 +228,16 @@ public class DBusAnimatedIcon : IDisposable
         }
 
         var frameName = _frameNames[_currentFrameIndex];
-        if (_iconCache.TryGetValue(frameName, out var pixmap))
+        var pixmap = _iconRenderer.GetIcon(frameName);
+        if (pixmap.HasValue)
         {
-            _sniHandler.SetIcon(pixmap);
+            _sniHandler.SetIcon(pixmap.Value);
             _logger.LogDebug("Set frame {FrameIndex}: {FrameName}", _currentFrameIndex, frameName);
         }
         else
         {
             _logger.LogWarning("Frame not in cache: {FrameName} (cache has {CacheCount} items)",
-                frameName, _iconCache.Count);
-        }
-    }
-
-    private (int, int, byte[])? RenderSvgToArgb(string svgPath, int size)
-    {
-        try
-        {
-            using var svg = new SKSvg();
-            if (svg.Load(svgPath) is null)
-                return null;
-
-            var picture = svg.Picture;
-            if (picture is null)
-                return null;
-
-            var bounds = picture.CullRect;
-            var scale = Math.Min(size / bounds.Width, size / bounds.Height);
-            var width = (int)(bounds.Width * scale);
-            var height = (int)(bounds.Height * scale);
-
-            if (width <= 0 || height <= 0)
-                return null;
-
-            using var bitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
-            using var canvas = new SKCanvas(bitmap);
-            canvas.Clear(SKColors.Transparent);
-            canvas.Scale(scale);
-            canvas.DrawPicture(picture);
-
-            var pixels = bitmap.Bytes;
-            var argbData = new byte[width * height * 4];
-
-            for (int i = 0; i < width * height; i++)
-            {
-                var srcIdx = i * 4;
-                var dstIdx = i * 4;
-
-                byte r = pixels[srcIdx];
-                byte g = pixels[srcIdx + 1];
-                byte b = pixels[srcIdx + 2];
-                byte a = pixels[srcIdx + 3];
-
-                argbData[dstIdx] = a;
-                argbData[dstIdx + 1] = r;
-                argbData[dstIdx + 2] = g;
-                argbData[dstIdx + 3] = b;
-            }
-
-            return (width, height, argbData);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to render SVG: {Path}", svgPath);
-            return null;
+                frameName, _iconRenderer.CacheCount);
         }
     }
 
@@ -333,7 +252,7 @@ public class DBusAnimatedIcon : IDisposable
         Hide();
         _serviceWatchDisposable?.Dispose();
         _connection?.Dispose();
-        _iconCache.Clear();
+        _iconRenderer.ClearCache();
 
         _logger.LogInformation("DBusAnimatedIcon disposed");
     }

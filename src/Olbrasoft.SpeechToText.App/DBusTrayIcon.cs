@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Logging;
 using Tmds.DBus.SourceGenerator;
-using SkiaSharp;
-using Svg.Skia;
 using Tmds.DBus.Protocol;
 
 namespace Olbrasoft.SpeechToText.App;
@@ -17,11 +15,9 @@ namespace Olbrasoft.SpeechToText.App;
 public class DBusTrayIcon : IDisposable
 {
     private static int s_instanceId;
-    private static readonly (int, int, byte[]) EmptyPixmap = (1, 1, new byte[] { 255, 0, 0, 0 });
 
     private readonly ILogger<DBusTrayIcon> _logger;
-    private readonly string _iconsPath;
-    private readonly int _iconSize;
+    private readonly SvgIconRenderer _iconRenderer;
 
     private Connection? _connection;
     private OrgFreedesktopDBusProxy? _dBus;
@@ -38,11 +34,8 @@ public class DBusTrayIcon : IDisposable
     private bool _isVisible = true;
 
     // Current icon state
-    private (int, int, byte[]) _currentIcon = EmptyPixmap;
+    private (int, int, byte[]) _currentIcon = SvgIconRenderer.EmptyPixmap;
     private string _tooltipText = "Speech to Text";
-
-    // Icon cache to avoid re-rendering SVGs
-    private readonly Dictionary<string, (int, int, byte[])> _iconCache = new();
 
     // Animation support
     private Timer? _animationTimer;
@@ -70,8 +63,7 @@ public class DBusTrayIcon : IDisposable
     public DBusTrayIcon(ILogger<DBusTrayIcon> logger, string iconsPath, int iconSize = 22)
     {
         _logger = logger;
-        _iconsPath = iconsPath;
-        _iconSize = iconSize;
+        _iconRenderer = new SvgIconRenderer(logger, iconsPath, iconSize);
     }
 
     /// <summary>
@@ -227,28 +219,10 @@ public class DBusTrayIcon : IDisposable
 
         try
         {
-            // Check cache first
-            if (_iconCache.TryGetValue(iconName, out var cachedIcon))
-            {
-                _currentIcon = cachedIcon;
-                _sniHandler?.SetIcon(_currentIcon);
-                _logger.LogDebug("Set icon from cache: {IconName}", iconName);
-                return;
-            }
-
-            // Load and render SVG
-            var iconPath = Path.Combine(_iconsPath, $"{iconName}.svg");
-            if (!File.Exists(iconPath))
-            {
-                _logger.LogWarning("Icon not found: {Path}", iconPath);
-                return;
-            }
-
-            var pixmap = RenderSvgToArgb(iconPath, _iconSize);
+            var pixmap = _iconRenderer.GetIcon(iconName);
             if (pixmap.HasValue)
             {
                 _currentIcon = pixmap.Value;
-                _iconCache[iconName] = _currentIcon;
                 _sniHandler?.SetIcon(_currentIcon);
                 _logger.LogDebug("Set icon: {IconName} ({Width}x{Height})", iconName, _currentIcon.Item1, _currentIcon.Item2);
             }
@@ -270,25 +244,9 @@ public class DBusTrayIcon : IDisposable
 
         try
         {
-            // Check cache first
-            if (_iconCache.TryGetValue(iconName, out var cachedIcon))
-            {
-                _sniHandler?.SetAttentionIcon(cachedIcon);
-                return;
-            }
-
-            // Load and render SVG
-            var iconPath = Path.Combine(_iconsPath, $"{iconName}.svg");
-            if (!File.Exists(iconPath))
-            {
-                _logger.LogWarning("Attention icon not found: {Path}", iconPath);
-                return;
-            }
-
-            var pixmap = RenderSvgToArgb(iconPath, _iconSize);
+            var pixmap = _iconRenderer.GetIcon(iconName);
             if (pixmap.HasValue)
             {
-                _iconCache[iconName] = pixmap.Value;
                 _sniHandler?.SetAttentionIcon(pixmap.Value);
             }
         }
@@ -326,29 +284,16 @@ public class DBusTrayIcon : IDisposable
             StopAnimationInternal();
 
             // Pre-cache all frames
-            foreach (var frameName in frameNames)
-            {
-                if (!_iconCache.ContainsKey(frameName))
-                {
-                    var iconPath = Path.Combine(_iconsPath, $"{frameName}.svg");
-                    if (File.Exists(iconPath))
-                    {
-                        var pixmap = RenderSvgToArgb(iconPath, _iconSize);
-                        if (pixmap.HasValue)
-                        {
-                            _iconCache[frameName] = pixmap.Value;
-                        }
-                    }
-                }
-            }
+            _iconRenderer.PreCacheIcons(frameNames);
 
             _animationFrames = frameNames;
             _currentFrameIndex = 0;
 
             // Set first frame immediately using animation method with timestamp
-            if (_iconCache.TryGetValue(frameNames[0], out var firstFrame))
+            var firstFrame = _iconRenderer.GetIcon(frameNames[0]);
+            if (firstFrame.HasValue)
             {
-                _currentIcon = firstFrame;
+                _currentIcon = firstFrame.Value;
                 _sniHandler?.SetAnimationFrame(_currentIcon, _currentFrameIndex);
             }
 
@@ -390,91 +335,13 @@ public class DBusTrayIcon : IDisposable
             _currentFrameIndex = (_currentFrameIndex + 1) % _animationFrames.Length;
             var frameName = _animationFrames[_currentFrameIndex];
 
-            // Use cached icon if available, call SetAnimationFrame with timestamp to bust cache
-            if (_iconCache.TryGetValue(frameName, out var cachedIcon))
+            // Get icon from renderer (cached or newly loaded)
+            var pixmap = _iconRenderer.GetIcon(frameName);
+            if (pixmap.HasValue)
             {
-                _currentIcon = cachedIcon;
+                _currentIcon = pixmap.Value;
                 _sniHandler?.SetAnimationFrame(_currentIcon, _currentFrameIndex);
             }
-            else
-            {
-                // Load icon and set it
-                var iconPath = Path.Combine(_iconsPath, $"{frameName}.svg");
-                if (File.Exists(iconPath))
-                {
-                    var pixmap = RenderSvgToArgb(iconPath, _iconSize);
-                    if (pixmap.HasValue)
-                    {
-                        _currentIcon = pixmap.Value;
-                        _iconCache[frameName] = _currentIcon;
-                        _sniHandler?.SetAnimationFrame(_currentIcon, _currentFrameIndex);
-                    }
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Renders an SVG file to ARGB pixel data for D-Bus.
-    /// </summary>
-    private (int, int, byte[])? RenderSvgToArgb(string svgPath, int size)
-    {
-        try
-        {
-            using var svg = new SKSvg();
-            if (svg.Load(svgPath) is null)
-            {
-                _logger.LogWarning("Failed to load SVG: {Path}", svgPath);
-                return null;
-            }
-
-            var picture = svg.Picture;
-            if (picture is null)
-                return null;
-
-            // Calculate scale to fit the target size
-            var bounds = picture.CullRect;
-            var scale = Math.Min(size / bounds.Width, size / bounds.Height);
-            var width = (int)(bounds.Width * scale);
-            var height = (int)(bounds.Height * scale);
-
-            if (width <= 0 || height <= 0)
-                return null;
-
-            // Create bitmap and render
-            using var bitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
-            using var canvas = new SKCanvas(bitmap);
-            canvas.Clear(SKColors.Transparent);
-            canvas.Scale(scale);
-            canvas.DrawPicture(picture);
-
-            // Convert RGBA to ARGB for D-Bus (StatusNotifierItem expects ARGB in network byte order)
-            var pixels = bitmap.Bytes;
-            var argbData = new byte[width * height * 4];
-
-            for (int i = 0; i < width * height; i++)
-            {
-                var srcIdx = i * 4;
-                var dstIdx = i * 4;
-
-                // RGBA -> ARGB (network byte order: ARGB as big-endian)
-                byte r = pixels[srcIdx];
-                byte g = pixels[srcIdx + 1];
-                byte b = pixels[srcIdx + 2];
-                byte a = pixels[srcIdx + 3];
-
-                argbData[dstIdx] = a;     // A
-                argbData[dstIdx + 1] = r; // R
-                argbData[dstIdx + 2] = g; // G
-                argbData[dstIdx + 3] = b; // B
-            }
-
-            return (width, height, argbData);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to render SVG: {Path}", svgPath);
-            return null;
         }
     }
 
@@ -499,7 +366,7 @@ public class DBusTrayIcon : IDisposable
         _serviceWatchDisposable?.Dispose();
         _connection?.Dispose();
 
-        _iconCache.Clear();
+        _iconRenderer.ClearCache();
 
         _logger.LogInformation("DBusTrayIcon disposed");
     }
