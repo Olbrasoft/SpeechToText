@@ -13,7 +13,6 @@ namespace Olbrasoft.SpeechToText.App;
 public class DBusAnimatedIcon : IDisposable
 {
     private static int s_instanceId = 1000; // Different range from main icon
-    private static readonly (int, int, byte[]) EmptyPixmap = (1, 1, new byte[] { 255, 0, 0, 0 });
 
     private readonly ILogger _logger;
     private readonly string _iconsPath;
@@ -72,6 +71,7 @@ public class DBusAnimatedIcon : IDisposable
             _connection.AddMethodHandler(_pathHandler);
 
             // Pre-cache all frames
+            _logger.LogDebug("Loading animation frames from: {IconsPath}", _iconsPath);
             foreach (var frameName in _frameNames)
             {
                 var iconPath = Path.Combine(_iconsPath, $"{frameName}.svg");
@@ -81,7 +81,17 @@ public class DBusAnimatedIcon : IDisposable
                     if (pixmap.HasValue)
                     {
                         _iconCache[frameName] = pixmap.Value;
+                        _logger.LogDebug("Cached frame {FrameName}: {Width}x{Height}, {Bytes} bytes",
+                            frameName, pixmap.Value.Item1, pixmap.Value.Item2, pixmap.Value.Item3.Length);
                     }
+                    else
+                    {
+                        _logger.LogWarning("Failed to render SVG: {IconPath}", iconPath);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("Frame SVG not found: {IconPath}", iconPath);
                 }
             }
 
@@ -89,7 +99,8 @@ public class DBusAnimatedIcon : IDisposable
             await WatchAsync();
 
             IsActive = true;
-            _logger.LogInformation("DBusAnimatedIcon initialized with {FrameCount} frames", _frameNames.Length);
+            _logger.LogInformation("DBusAnimatedIcon initialized with {CachedCount}/{TotalCount} frames cached",
+                _iconCache.Count, _frameNames.Length);
         }
         catch (Exception ex)
         {
@@ -148,7 +159,11 @@ public class DBusAnimatedIcon : IDisposable
     public async Task ShowAsync()
     {
         if (_isDisposed || !_serviceConnected || _isVisible || _statusNotifierWatcher is null)
+        {
+            _logger.LogDebug("ShowAsync skipped: disposed={Disposed}, connected={Connected}, visible={Visible}, watcher={HasWatcher}",
+                _isDisposed, _serviceConnected, _isVisible, _statusNotifierWatcher is not null);
             return;
+        }
 
         try
         {
@@ -233,12 +248,22 @@ public class DBusAnimatedIcon : IDisposable
     private void SetCurrentFrame()
     {
         if (_frameNames.Length == 0 || _sniHandler is null)
+        {
+            _logger.LogDebug("SetCurrentFrame skipped: frames={FrameCount}, handler={HasHandler}",
+                _frameNames.Length, _sniHandler is not null);
             return;
+        }
 
         var frameName = _frameNames[_currentFrameIndex];
         if (_iconCache.TryGetValue(frameName, out var pixmap))
         {
             _sniHandler.SetIcon(pixmap);
+            _logger.LogDebug("Set frame {FrameIndex}: {FrameName}", _currentFrameIndex, frameName);
+        }
+        else
+        {
+            _logger.LogWarning("Frame not in cache: {FrameName} (cache has {CacheCount} items)",
+                frameName, _iconCache.Count);
         }
     }
 
@@ -360,7 +385,11 @@ internal class AnimatedIconHandler : OrgKdeStatusNotifierItemHandler
     public void SetIcon((int, int, byte[]) dbusPixmap)
     {
         IconPixmap = new[] { dbusPixmap };
-        IconName = "";
+        IconName = "";  // Clear icon name to force pixmap usage
+        Status = "Active";
+
+        // Emit signals to notify the tray about the change
         EmitNewIcon();
+        EmitNewStatus(Status);
     }
 }
