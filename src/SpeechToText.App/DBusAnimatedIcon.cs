@@ -61,8 +61,9 @@ public class DBusAnimatedIcon : IDisposable
             _pathHandler = new PathHandler("/StatusNotifierItem");
             _sniHandler = new AnimatedIconHandler(_connection, _logger);
 
-            _pathHandler.Add(_sniHandler);
-            _connection.AddMethodHandler(_pathHandler);
+            // NOTE: Do NOT add the handler here - it will be added in ShowAsync()
+            // Adding it here causes GNOME Shell to detect and display a second tray icon
+            // even before RegisterStatusNotifierItemAsync is called (issue #62)
 
             // Pre-cache all animation frames
             _logger.LogDebug("Loading animation frames from: {IconsPath}", _iconRenderer.IconsPath);
