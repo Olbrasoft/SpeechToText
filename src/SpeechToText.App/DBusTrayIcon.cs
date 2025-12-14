@@ -237,7 +237,9 @@ public class DBusTrayIcon : IDisposable
             if (pixmap.HasValue)
             {
                 _currentIcon = pixmap.Value;
-                _sniHandler?.SetIcon(_currentIcon);
+                // Only call SetIcon if handler is registered on D-Bus (issue #62)
+                if (_sniHandler?.PathHandler is not null)
+                    _sniHandler.SetIcon(_currentIcon);
                 _logger.LogDebug("Set icon: {IconName} ({Width}x{Height})", iconName, _currentIcon.Item1, _currentIcon.Item2);
             }
         }
@@ -259,9 +261,9 @@ public class DBusTrayIcon : IDisposable
         try
         {
             var pixmap = _iconRenderer.GetIcon(iconName);
-            if (pixmap.HasValue)
+            if (pixmap.HasValue && _sniHandler?.PathHandler is not null)
             {
-                _sniHandler?.SetAttentionIcon(pixmap.Value);
+                _sniHandler.SetAttentionIcon(pixmap.Value);
             }
         }
         catch (Exception ex)
@@ -279,7 +281,9 @@ public class DBusTrayIcon : IDisposable
             return;
 
         _tooltipText = text;
-        _sniHandler?.SetTitleAndTooltip(text);
+        // Only call SetTitleAndTooltip if handler is registered on D-Bus (issue #62)
+        if (_sniHandler?.PathHandler is not null)
+            _sniHandler.SetTitleAndTooltip(text);
     }
 
     /// <summary>
