@@ -1,10 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <RootNamespace>Olbrasoft.SpeechToText.Service.Tests</RootNamespace>
+    <AssemblyName>Olbrasoft.SpeechToText.Service.Tests</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,8 +22,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Olbrasoft.SpeechToText\Olbrasoft.SpeechToText.csproj" />
-    <ProjectReference Include="..\..\src\Olbrasoft.SpeechToText.App\Olbrasoft.SpeechToText.App.csproj" />
+    <ProjectReference Include="..\..\src\SpeechToText.Core\SpeechToText.Core.csproj" />
+    <ProjectReference Include="..\..\src\SpeechToText\SpeechToText.csproj" />
+    <ProjectReference Include="..\..\src\SpeechToText.Service\SpeechToText.Service.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,7 +1,7 @@
 using Olbrasoft.SpeechToText;
 using Olbrasoft.SpeechToText.App;
 
-namespace Olbrasoft.SpeechToText.Tests;
+namespace Olbrasoft.SpeechToText.App.Tests;
 
 public class DictationOptionsTests
 {

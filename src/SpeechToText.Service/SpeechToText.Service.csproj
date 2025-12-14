@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Olbrasoft.SpeechToText.Service</RootNamespace>
+    <AssemblyName>Olbrasoft.SpeechToText.Service</AssemblyName>
     <UserSecretsId>dotnet-Olbrasoft.SpeechToText.Service-20251213</UserSecretsId>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
@@ -12,7 +13,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Olbrasoft.SpeechToText\Olbrasoft.SpeechToText.csproj" />
+    <ProjectReference Include="..\SpeechToText.Core\SpeechToText.Core.csproj" />
+    <ProjectReference Include="..\SpeechToText\SpeechToText.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -10,11 +10,16 @@ Linux push-to-talk dictation. CapsLock triggers audio capture, Whisper transcrib
 
 | Path | Purpose |
 |------|---------|
-| `src/Olbrasoft.SpeechToText.Core/` | Interfaces, models (platform-agnostic) |
-| `src/Olbrasoft.SpeechToText/` | Linux implementations |
-| `src/Olbrasoft.SpeechToText.App/` | Desktop app with tray icon |
-| `src/Olbrasoft.SpeechToText.Service/` | ASP.NET Core service + SignalR |
-| `tests/Olbrasoft.SpeechToText.Tests/` | xUnit + Moq tests |
+| `src/SpeechToText.Core/` | Interfaces, models (platform-agnostic) |
+| `src/SpeechToText/` | Linux implementations |
+| `src/SpeechToText.App/` | Desktop app with tray icon |
+| `src/SpeechToText.Service/` | ASP.NET Core service + SignalR |
+| `tests/SpeechToText.Tests/` | Main library tests |
+| `tests/SpeechToText.Core.Tests/` | Core tests |
+| `tests/SpeechToText.App.Tests/` | App tests (39 tests) |
+| `tests/SpeechToText.Service.Tests/` | Service tests |
+
+**Note:** Project names are `SpeechToText.*`, namespaces are `Olbrasoft.SpeechToText.*`.
 
 ## Key Files
 
@@ -25,6 +30,10 @@ Linux push-to-talk dictation. CapsLock triggers audio capture, Whisper transcrib
 | `Core/Interfaces/IKeySimulator.cs` | Key simulation (write-only, ISP) |
 | `Core/Interfaces/ISpeechTranscriber.cs` | Whisper transcription |
 | `Core/Interfaces/ITextTyper.cs` | Text input simulation |
+| `Core/Models/AudioDataEventArgs.cs` | Audio data event |
+| `Core/Models/KeyCode.cs` | Key codes enum |
+| `Core/Models/KeyEventArgs.cs` | Keyboard event args |
+| `Core/Models/TranscriptionResult.cs` | Transcription result |
 | `AlsaAudioRecorder.cs` | ALSA via arecord process |
 | `EvdevKeyboardMonitor.cs` | Linux evdev keyboard |
 | `UinputKeySimulator.cs` | Linux uinput key sim |
@@ -41,12 +50,12 @@ Linux push-to-talk dictation. CapsLock triggers audio capture, Whisper transcrib
 ```bash
 dotnet build                                    # Build all
 dotnet test                                     # Run 39 tests
-dotnet run --project src/Olbrasoft.SpeechToText.Service  # Run service
+dotnet run --project src/SpeechToText.Service   # Run service
 ```
 
 ## Config
 
-`src/Olbrasoft.SpeechToText.Service/appsettings.json`:
+`src/SpeechToText.Service/appsettings.json`:
 
 ```json
 {
@@ -114,7 +123,7 @@ SignalR hub at `/hubs/ptt`:
 
 ## Tests
 
-39 tests in `Olbrasoft.SpeechToText.Tests`:
+39 tests in `SpeechToText.App.Tests`:
 - `DictationOptionsTests` (22) - config parsing
 - `DictationServiceTests` (10) - service behavior
 - `SingleInstanceLockTests` (7) - lock mechanism
