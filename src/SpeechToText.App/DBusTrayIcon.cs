@@ -82,8 +82,9 @@ public class DBusTrayIcon : IDisposable
             _sniHandler = new StatusNotifierItemHandler(_connection, _logger);
             _sniHandler.ActivationDelegate += () => OnClicked?.Invoke();
 
-            _pathHandler.Add(_sniHandler);
-            _connection.AddMethodHandler(_pathHandler);
+            // NOTE: Do NOT add the handler here - it will be added in CreateTrayIconAsync()
+            // Adding it here causes StatusNotifierWatcher to detect a second icon
+            // before RegisterStatusNotifierItemAsync is called (issue #62)
 
             // Register D-Bus menu handler at /MenuBar path
             _menuPathHandler = new PathHandler("/MenuBar");
@@ -91,8 +92,7 @@ public class DBusTrayIcon : IDisposable
             _menuHandler.OnQuitRequested += () => OnQuitRequested?.Invoke();
             _menuHandler.OnAboutRequested += () => OnAboutRequested?.Invoke();
 
-            _menuPathHandler.Add(_menuHandler);
-            _connection.AddMethodHandler(_menuPathHandler);
+            // NOTE: Menu handler will also be added in CreateTrayIconAsync() for consistency
 
             IsActive = true;
 
@@ -168,12 +168,19 @@ public class DBusTrayIcon : IDisposable
             var pid = Environment.ProcessId;
             var tid = Interlocked.Increment(ref s_instanceId);
 
-            // Re-add handler if needed
+            // Add SNI handler if needed
             if (_sniHandler!.PathHandler is null)
                 _pathHandler!.Add(_sniHandler);
 
             _connection.RemoveMethodHandler(_pathHandler!.Path);
             _connection.AddMethodHandler(_pathHandler);
+
+            // Add menu handler if needed
+            if (_menuHandler!.PathHandler is null)
+                _menuPathHandler!.Add(_menuHandler);
+
+            _connection.RemoveMethodHandler(_menuPathHandler!.Path);
+            _connection.AddMethodHandler(_menuPathHandler);
 
             _sysTrayServiceName = $"org.kde.StatusNotifierItem-{pid}-{tid}";
             await _dBus!.RequestNameAsync(_sysTrayServiceName, 0);
@@ -201,6 +208,13 @@ public class DBusTrayIcon : IDisposable
             _ = _dBus!.ReleaseNameAsync(_sysTrayServiceName);
             _pathHandler!.Remove(_sniHandler);
             _connection.RemoveMethodHandler(_pathHandler.Path);
+
+            // Also remove menu handler
+            if (_menuHandler is not null && _menuPathHandler is not null)
+            {
+                _menuPathHandler.Remove(_menuHandler);
+                _connection.RemoveMethodHandler(_menuPathHandler.Path);
+            }
         }
         catch (Exception ex)
         {
