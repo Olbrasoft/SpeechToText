@@ -66,7 +66,7 @@ using var serviceProvider = services.BuildServiceProvider();
 // Get services
 var dictationService = serviceProvider.GetRequiredService<DictationService>();
 var dbusTrayIcon = serviceProvider.GetRequiredService<DBusTrayIcon>();
-var animatedIcon = serviceProvider.GetRequiredService<DBusAnimatedIcon>();
+// NOTE: DBusAnimatedIcon removed - using DBusTrayIcon.StartAnimation() instead (issue #62)
 
 logger.LogInformation("Whisper model loaded: {Path}", modelPath);
 logger.LogInformation("Text typer: {DisplayServer}", Olbrasoft.SpeechToText.TextInput.TextTyperFactory.GetDisplayServerName());
@@ -75,9 +75,8 @@ var cts = new CancellationTokenSource();
 
 try
 {
-    // Initialize D-Bus tray icons
+    // Initialize D-Bus tray icon (single icon, no separate animated icon - issue #62)
     await dbusTrayIcon.InitializeAsync();
-    await animatedIcon.InitializeAsync();
 
     if (dbusTrayIcon.IsActive)
     {
@@ -88,24 +87,26 @@ try
         dbusTrayIcon.SetTooltip("Speech to Text - Idle");
 
         // Handle state changes from DictationService
-        dictationService.StateChanged += async (_, state) =>
+        // Animation frames for transcribing state
+        var animationFrames = options.AnimationFrames;
+
+        dictationService.StateChanged += (_, state) =>
         {
             switch (state)
             {
                 case DictationState.Idle:
-                    animatedIcon.Hide();
+                    dbusTrayIcon.StopAnimation();
                     dbusTrayIcon.SetIcon("trigger-speech-to-text");
                     dbusTrayIcon.SetTooltip("Speech to Text - Idle");
                     break;
                 case DictationState.Recording:
-                    animatedIcon.Hide();
+                    dbusTrayIcon.StopAnimation();
                     dbusTrayIcon.SetIcon("trigger-speech-to-text-recording");
                     dbusTrayIcon.SetTooltip("Speech to Text - Recording...");
                     break;
                 case DictationState.Transcribing:
-                    dbusTrayIcon.SetIcon("trigger-speech-to-text");
                     dbusTrayIcon.SetTooltip("Speech to Text - Transcribing...");
-                    await animatedIcon.ShowAsync();
+                    dbusTrayIcon.StartAnimation(animationFrames, options.AnimationIntervalMs);
                     break;
             }
         };
@@ -186,7 +187,6 @@ finally
 {
     cts.Cancel();
     dictationService.Dispose();
-    animatedIcon.Dispose();
     dbusTrayIcon.Dispose();
 }
 

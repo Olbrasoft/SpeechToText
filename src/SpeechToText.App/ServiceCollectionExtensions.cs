@@ -103,24 +103,14 @@ public static class ServiceCollectionExtensions
         DictationOptions options,
         string iconsPath)
     {
-        // Main tray icon
+        // Main tray icon (handles both static and animated states - issue #62)
         services.AddSingleton(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<DBusTrayIcon>>();
             return new DBusTrayIcon(logger, iconsPath, options.IconSize);
         });
 
-        // Animated icon for transcription
-        services.AddSingleton(sp =>
-        {
-            var logger = sp.GetRequiredService<ILogger<DBusAnimatedIcon>>();
-            return new DBusAnimatedIcon(
-                logger,
-                iconsPath,
-                options.AnimationFrames,
-                options.IconSize,
-                options.AnimationIntervalMs);
-        });
+        // NOTE: DBusAnimatedIcon removed - animation is now handled by DBusTrayIcon.StartAnimation() (issue #62)
 
         return services;
     }
