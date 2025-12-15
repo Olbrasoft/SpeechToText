@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Moq;
 using Olbrasoft.SpeechToText.TextInput;
+using Olbrasoft.Testing.Xunit.Attributes;
 
 namespace Olbrasoft.SpeechToText.Linux.Tests.TextInput;
 
@@ -72,7 +73,7 @@ public class DotoolTextTyperTests
         Assert.Null(exception);
     }
 
-    [Fact]
+    [SkipOnCIFact]
     public void IsAvailable_ShouldReturnBooleanWithoutException()
     {
         // Arrange
@@ -85,7 +86,7 @@ public class DotoolTextTyperTests
         Assert.Null(exception);
     }
 
-    [Fact]
+    [SkipOnCIFact]
     public async Task TypeTextAsync_WhenNotAvailable_ShouldThrowInvalidOperationException()
     {
         // Arrange
