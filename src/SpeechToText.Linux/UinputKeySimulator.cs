@@ -1,15 +1,24 @@
-using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
+using Olbrasoft.SpeechToText.Native;
 
 namespace Olbrasoft.SpeechToText;
 
 /// <summary>
-/// Linux uinput-based key simulator using Python for low-level device control.
+/// Linux uinput-based key simulator using native C# P/Invoke.
+/// Creates a virtual keyboard device to simulate key presses.
 /// </summary>
 public class UinputKeySimulator : IKeySimulator
 {
     private readonly ILogger<UinputKeySimulator> _logger;
     private const string UinputPath = "/dev/uinput";
+    private const string DeviceName = "speech-to-text-kbd";
+
+    // Timing delays (in milliseconds)
+    private const int DeviceSetupDelayMs = 100;
+    private const int KeyPressDelayMs = 50;
+    private const int ModifierDelayMs = 20;
+    private const int DeviceCleanupDelayMs = 100;
 
     public UinputKeySimulator(ILogger<UinputKeySimulator> logger)
     {
@@ -29,10 +38,8 @@ public class UinputKeySimulator : IKeySimulator
                 return;
             }
 
-            var keyCode = (int)key;
-            var script = GenerateSingleKeyScript(keyCode);
-
-            await ExecutePythonScriptAsync(script, $"key press: {key}");
+            var keyCode = (ushort)key;
+            await SimulateKeysAsync([keyCode], [keyCode]);
         }
         catch (Exception ex)
         {
@@ -53,11 +60,14 @@ public class UinputKeySimulator : IKeySimulator
                 return;
             }
 
-            var modifierCode = (int)modifier;
-            var keyCode = (int)key;
-            var script = GenerateTwoKeyComboScript(modifierCode, keyCode);
+            var modCode = (ushort)modifier;
+            var keyCode = (ushort)key;
 
-            await ExecutePythonScriptAsync(script, $"key combo: {modifier}+{key}");
+            // Keys to enable (all unique keys needed)
+            var keysToEnable = new[] { modCode, keyCode };
+
+            // Press sequence: modifier down, key down, key up, modifier up
+            await SimulateKeyComboInternalAsync(keysToEnable, [modCode], keyCode);
         }
         catch (Exception ex)
         {
@@ -78,12 +88,15 @@ public class UinputKeySimulator : IKeySimulator
                 return;
             }
 
-            var mod1Code = (int)modifier1;
-            var mod2Code = (int)modifier2;
-            var keyCode = (int)key;
-            var script = GenerateThreeKeyComboScript(mod1Code, mod2Code, keyCode);
+            var mod1Code = (ushort)modifier1;
+            var mod2Code = (ushort)modifier2;
+            var keyCode = (ushort)key;
 
-            await ExecutePythonScriptAsync(script, $"key combo: {modifier1}+{modifier2}+{key}");
+            // Keys to enable (all unique keys needed)
+            var keysToEnable = new[] { mod1Code, mod2Code, keyCode };
+
+            // Press sequence: modifier1 down, modifier2 down, key down, key up, modifier2 up, modifier1 up
+            await SimulateKeyComboInternalAsync(keysToEnable, [mod1Code, mod2Code], keyCode);
         }
         catch (Exception ex)
         {
@@ -91,227 +104,200 @@ public class UinputKeySimulator : IKeySimulator
         }
     }
 
-    private async Task ExecutePythonScriptAsync(string script, string operationDescription)
+    /// <summary>
+    /// Simulates a single key press/release sequence.
+    /// </summary>
+    private async Task SimulateKeysAsync(ushort[] keysToEnable, ushort[] keysToPress)
     {
-        var processInfo = new ProcessStartInfo
+        var fd = -1;
+        try
         {
-            FileName = "python3",
-            Arguments = $"-c \"{script.Replace("\"", "\\\"")}\"",
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-
-        using var process = Process.Start(processInfo);
-        if (process != null)
-        {
-            await process.WaitForExitAsync();
-            var stderr = await process.StandardError.ReadToEndAsync();
-
-            if (process.ExitCode != 0)
+            fd = OpenUinputDevice();
+            if (fd < 0)
             {
-                _logger.LogError("Failed to simulate {Operation}. Exit code: {ExitCode}, Error: {Error}",
-                    operationDescription, process.ExitCode, stderr);
+                _logger.LogError("Failed to open uinput device");
+                return;
             }
-            else
+
+            // Setup device
+            SetupKeyboardDevice(fd, keysToEnable);
+
+            // Wait for device to be ready
+            await Task.Delay(DeviceSetupDelayMs);
+
+            // Press all keys
+            foreach (var key in keysToPress)
             {
-                _logger.LogInformation("Successfully simulated {Operation}", operationDescription);
+                SendKeyEvent(fd, key, 1); // Press
+                SendSyncEvent(fd);
+            }
+
+            await Task.Delay(KeyPressDelayMs);
+
+            // Release all keys in reverse order
+            for (int i = keysToPress.Length - 1; i >= 0; i--)
+            {
+                SendKeyEvent(fd, keysToPress[i], 0); // Release
+                SendSyncEvent(fd);
+            }
+
+            await Task.Delay(DeviceCleanupDelayMs);
+
+            _logger.LogInformation("Successfully simulated key press");
+        }
+        finally
+        {
+            if (fd >= 0)
+            {
+                DestroyAndCloseDevice(fd);
             }
         }
     }
 
-    private static string GenerateSingleKeyScript(int keyCode) => $@"
-import os
-import time
-import struct
-import fcntl
+    /// <summary>
+    /// Simulates a key combination with modifiers.
+    /// </summary>
+    private async Task SimulateKeyComboInternalAsync(ushort[] keysToEnable, ushort[] modifiers, ushort key)
+    {
+        var fd = -1;
+        try
+        {
+            fd = OpenUinputDevice();
+            if (fd < 0)
+            {
+                _logger.LogError("Failed to open uinput device");
+                return;
+            }
 
-# uinput constants
-UI_SET_EVBIT = 0x40045564
-UI_SET_KEYBIT = 0x40045565
-UI_DEV_CREATE = 0x5501
-UI_DEV_DESTROY = 0x5502
-EV_KEY = 0x01
-EV_SYN = 0x00
-SYN_REPORT = 0x00
+            // Setup device
+            SetupKeyboardDevice(fd, keysToEnable);
 
-# Open uinput
-fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
+            // Wait for device to be ready
+            await Task.Delay(DeviceSetupDelayMs);
 
-# Enable EV_KEY
-fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
+            // Press modifiers in order
+            foreach (var mod in modifiers)
+            {
+                SendKeyEvent(fd, mod, 1); // Press modifier
+                SendSyncEvent(fd);
+                await Task.Delay(ModifierDelayMs);
+            }
 
-# Enable the specific key
-fcntl.ioctl(fd, UI_SET_KEYBIT, {keyCode})
+            // Press main key
+            SendKeyEvent(fd, key, 1); // Press
+            SendSyncEvent(fd);
+            await Task.Delay(KeyPressDelayMs);
 
-# uinput_user_dev structure (legacy)
-name = b'speech-to-text-kbd'
-name = name + b'\x00' * (80 - len(name))
-user_dev = name + struct.pack('<HHHHI', 0x03, 0x1234, 0x5678, 0x0001, 0)
-user_dev = user_dev + b'\x00' * (4 * 64 * 4)
+            // Release main key
+            SendKeyEvent(fd, key, 0); // Release
+            SendSyncEvent(fd);
+            await Task.Delay(ModifierDelayMs);
 
-os.write(fd, user_dev)
-fcntl.ioctl(fd, UI_DEV_CREATE)
+            // Release modifiers in reverse order
+            for (int i = modifiers.Length - 1; i >= 0; i--)
+            {
+                SendKeyEvent(fd, modifiers[i], 0); // Release modifier
+                SendSyncEvent(fd);
+                await Task.Delay(ModifierDelayMs);
+            }
 
-time.sleep(0.1)
+            await Task.Delay(DeviceCleanupDelayMs);
 
-def send_event(fd, ev_type, code, value):
-    event = struct.pack('<QQHHi', 0, 0, ev_type, code, value)
-    os.write(fd, event)
+            _logger.LogInformation("Successfully simulated key combo");
+        }
+        finally
+        {
+            if (fd >= 0)
+            {
+                DestroyAndCloseDevice(fd);
+            }
+        }
+    }
 
-send_event(fd, EV_KEY, {keyCode}, 1)  # Press
-send_event(fd, EV_SYN, SYN_REPORT, 0)
+    /// <summary>
+    /// Opens the uinput device for writing.
+    /// </summary>
+    private int OpenUinputDevice()
+    {
+        var fd = LinuxInterop.Open(UinputPath, LinuxInterop.O_WRONLY | LinuxInterop.O_NONBLOCK);
+        if (fd < 0)
+        {
+            var error = Marshal.GetLastWin32Error();
+            _logger.LogError("Failed to open {Path}: errno={Error}", UinputPath, error);
+        }
+        return fd;
+    }
 
-time.sleep(0.05)
+    /// <summary>
+    /// Sets up the virtual keyboard device with the specified keys enabled.
+    /// </summary>
+    private void SetupKeyboardDevice(int fd, ushort[] keyCodes)
+    {
+        // Enable EV_KEY event type
+        var result = LinuxInterop.Ioctl(fd, LinuxInterop.UI_SET_EVBIT, LinuxInterop.EV_KEY);
+        if (result < 0)
+        {
+            _logger.LogWarning("Failed to set EV_KEY bit: errno={Error}", Marshal.GetLastWin32Error());
+        }
 
-send_event(fd, EV_KEY, {keyCode}, 0)  # Release
-send_event(fd, EV_SYN, SYN_REPORT, 0)
+        // Enable each key code
+        foreach (var keyCode in keyCodes)
+        {
+            result = LinuxInterop.Ioctl(fd, LinuxInterop.UI_SET_KEYBIT, keyCode);
+            if (result < 0)
+            {
+                _logger.LogWarning("Failed to set key bit {KeyCode}: errno={Error}", keyCode, Marshal.GetLastWin32Error());
+            }
+        }
 
-time.sleep(0.1)
+        // Write uinput_user_dev structure
+        var userDev = UinputUserDev.Create(DeviceName);
+        WriteStruct(fd, ref userDev);
 
-fcntl.ioctl(fd, UI_DEV_DESTROY)
-os.close(fd)
-";
+        // Create the device
+        result = LinuxInterop.Ioctl(fd, LinuxInterop.UI_DEV_CREATE, 0);
+        if (result < 0)
+        {
+            _logger.LogWarning("Failed to create device: errno={Error}", Marshal.GetLastWin32Error());
+        }
+    }
 
-    private static string GenerateTwoKeyComboScript(int modifierCode, int keyCode) => $@"
-import os
-import time
-import struct
-import fcntl
+    /// <summary>
+    /// Sends a key event to the uinput device.
+    /// </summary>
+    private void SendKeyEvent(int fd, ushort keyCode, int value)
+    {
+        var ev = InputEvent.Create(LinuxInterop.EV_KEY, keyCode, value);
+        WriteStruct(fd, ref ev);
+    }
 
-# uinput constants
-UI_SET_EVBIT = 0x40045564
-UI_SET_KEYBIT = 0x40045565
-UI_DEV_CREATE = 0x5501
-UI_DEV_DESTROY = 0x5502
-EV_KEY = 0x01
-EV_SYN = 0x00
-SYN_REPORT = 0x00
+    /// <summary>
+    /// Sends a sync event to flush pending events.
+    /// </summary>
+    private void SendSyncEvent(int fd)
+    {
+        var ev = InputEvent.Create(LinuxInterop.EV_SYN, LinuxInterop.SYN_REPORT, 0);
+        WriteStruct(fd, ref ev);
+    }
 
-# Open uinput
-fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
+    /// <summary>
+    /// Destroys the virtual device and closes the file descriptor.
+    /// </summary>
+    private void DestroyAndCloseDevice(int fd)
+    {
+        LinuxInterop.Ioctl(fd, LinuxInterop.UI_DEV_DESTROY, 0);
+        LinuxInterop.Close(fd);
+    }
 
-# Enable EV_KEY
-fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
-
-# Enable both keys
-fcntl.ioctl(fd, UI_SET_KEYBIT, {modifierCode})
-fcntl.ioctl(fd, UI_SET_KEYBIT, {keyCode})
-
-# Create uinput device
-name = b'speech-to-text-kbd'
-name = name + b'\x00' * (80 - len(name))
-user_dev = name + struct.pack('<HHHHI', 0x03, 0x1234, 0x5678, 0x0001, 0)
-user_dev = user_dev + b'\x00' * (4 * 64 * 4)
-
-os.write(fd, user_dev)
-fcntl.ioctl(fd, UI_DEV_CREATE)
-
-time.sleep(0.1)
-
-def send_event(fd, ev_type, code, value):
-    event = struct.pack('<QQHHi', 0, 0, ev_type, code, value)
-    os.write(fd, event)
-
-# Press modifier
-send_event(fd, EV_KEY, {modifierCode}, 1)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.02)
-
-# Press key
-send_event(fd, EV_KEY, {keyCode}, 1)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.05)
-
-# Release key
-send_event(fd, EV_KEY, {keyCode}, 0)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.02)
-
-# Release modifier
-send_event(fd, EV_KEY, {modifierCode}, 0)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-
-time.sleep(0.1)
-
-fcntl.ioctl(fd, UI_DEV_DESTROY)
-os.close(fd)
-";
-
-    private static string GenerateThreeKeyComboScript(int mod1Code, int mod2Code, int keyCode) => $@"
-import os
-import time
-import struct
-import fcntl
-
-# uinput constants
-UI_SET_EVBIT = 0x40045564
-UI_SET_KEYBIT = 0x40045565
-UI_DEV_CREATE = 0x5501
-UI_DEV_DESTROY = 0x5502
-EV_KEY = 0x01
-EV_SYN = 0x00
-SYN_REPORT = 0x00
-
-# Open uinput
-fd = os.open('/dev/uinput', os.O_WRONLY | os.O_NONBLOCK)
-
-# Enable EV_KEY
-fcntl.ioctl(fd, UI_SET_EVBIT, EV_KEY)
-
-# Enable all keys
-fcntl.ioctl(fd, UI_SET_KEYBIT, {mod1Code})
-fcntl.ioctl(fd, UI_SET_KEYBIT, {mod2Code})
-fcntl.ioctl(fd, UI_SET_KEYBIT, {keyCode})
-
-# Create uinput device
-name = b'speech-to-text-kbd'
-name = name + b'\x00' * (80 - len(name))
-user_dev = name + struct.pack('<HHHHI', 0x03, 0x1234, 0x5678, 0x0001, 0)
-user_dev = user_dev + b'\x00' * (4 * 64 * 4)
-
-os.write(fd, user_dev)
-fcntl.ioctl(fd, UI_DEV_CREATE)
-
-time.sleep(0.1)
-
-def send_event(fd, ev_type, code, value):
-    event = struct.pack('<QQHHi', 0, 0, ev_type, code, value)
-    os.write(fd, event)
-
-# Press modifier1
-send_event(fd, EV_KEY, {mod1Code}, 1)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.02)
-
-# Press modifier2
-send_event(fd, EV_KEY, {mod2Code}, 1)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.02)
-
-# Press key
-send_event(fd, EV_KEY, {keyCode}, 1)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.05)
-
-# Release key
-send_event(fd, EV_KEY, {keyCode}, 0)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.02)
-
-# Release modifier2
-send_event(fd, EV_KEY, {mod2Code}, 0)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-time.sleep(0.02)
-
-# Release modifier1
-send_event(fd, EV_KEY, {mod1Code}, 0)
-send_event(fd, EV_SYN, SYN_REPORT, 0)
-
-time.sleep(0.1)
-
-fcntl.ioctl(fd, UI_DEV_DESTROY)
-os.close(fd)
-";
+    /// <summary>
+    /// Writes a struct to the file descriptor.
+    /// </summary>
+    private static unsafe void WriteStruct<T>(int fd, ref T data) where T : unmanaged
+    {
+        fixed (T* ptr = &data)
+        {
+            var size = (nuint)sizeof(T);
+            LinuxInterop.Write(fd, (nint)ptr, size);
+        }
+    }
 }

@@ -118,8 +118,16 @@ builder.Services.AddSingleton(sp =>
 // Transcription tray service (not from DI - needs special lifecycle with GTK)
 builder.Services.AddSingleton<TranscriptionTrayService>();
 
-// HTTP client for TTS stop functionality
-builder.Services.AddHttpClient<DictationWorker>();
+// Hallucination filter for Whisper transcriptions
+builder.Services.Configure<HallucinationFilterOptions>(
+    builder.Configuration.GetSection(HallucinationFilterOptions.SectionName));
+builder.Services.AddSingleton<IHallucinationFilter, WhisperHallucinationFilter>();
+
+// Speech lock service (file-based lock to prevent TTS during recording)
+builder.Services.AddSingleton<ISpeechLockService, SpeechLockService>();
+
+// TTS control service (HTTP client for TTS and VirtualAssistant APIs)
+builder.Services.AddHttpClient<ITtsControlService, TtsControlService>();
 
 // Bluetooth mouse monitor (remote push-to-talk trigger)
 var bluetoothTripleClickCommand = builder.Configuration.GetValue<string?>("BluetoothMouse:TripleClickCommand");
