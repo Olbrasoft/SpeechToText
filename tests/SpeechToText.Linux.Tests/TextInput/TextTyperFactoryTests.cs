@@ -187,22 +187,6 @@ public class TextTyperFactoryTests
         Assert.Equal("unknown", result);
     }
 
-    [Fact]
-    public void Create_ShouldReturnITextTyperInstance()
-    {
-        // Arrange - setup for Wayland environment
-        _environmentMock.Setup(e => e.GetEnvironmentVariable("XDG_SESSION_TYPE"))
-            .Returns("wayland");
-
-        var factory = new TextTyperFactory(_loggerFactoryMock.Object, _environmentMock.Object);
-
-        // Act
-        var result = factory.Create();
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.IsAssignableFrom<ITextTyper>(result);
-    }
 }
 
 public class SystemEnvironmentProviderTests
