@@ -47,11 +47,11 @@ public class VirtualAssistantClient : IVirtualAssistantClient
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("Notified VirtualAssistant: recording started (speech lock active)");
+                _logger.LogInformation("🔒 VirtualAssistant speech lock STARTED");
             }
             else
             {
-                _logger.LogDebug("VirtualAssistant speech-lock start failed: {StatusCode}", response.StatusCode);
+                _logger.LogWarning("VirtualAssistant speech-lock start failed: {StatusCode}", response.StatusCode);
             }
         }
         catch (OperationCanceledException)
@@ -83,11 +83,11 @@ public class VirtualAssistantClient : IVirtualAssistantClient
 
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogDebug("Notified VirtualAssistant: recording stopped (speech lock released)");
+                _logger.LogInformation("🔓 VirtualAssistant speech lock STOPPED");
             }
             else
             {
-                _logger.LogDebug("VirtualAssistant speech-lock stop failed: {StatusCode}", response.StatusCode);
+                _logger.LogWarning("VirtualAssistant speech-lock stop failed: {StatusCode}", response.StatusCode);
             }
         }
         catch (OperationCanceledException)
