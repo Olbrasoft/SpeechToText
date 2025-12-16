@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Olbrasoft.SpeechToText.App.Services;
 using Olbrasoft.SpeechToText.Audio;
 using Olbrasoft.SpeechToText.Speech;
 using Olbrasoft.SpeechToText.TextInput;
@@ -28,10 +29,12 @@ public class DictationService : IDisposable, IAsyncDisposable
     private readonly ITextTyper _textTyper;
     private readonly TypingSoundPlayer? _typingSoundPlayer;
     private readonly TextFilter? _textFilter;
+    private readonly IVirtualAssistantClient? _virtualAssistantClient;
     private readonly KeyCode _triggerKey;
     private readonly KeyCode _cancelKey;
 
     private DictationState _state = DictationState.Idle;
+    private readonly object _stateLock = new();
     private CancellationTokenSource? _cts;
     private CancellationTokenSource? _transcriptionCts;
 
@@ -39,6 +42,11 @@ public class DictationService : IDisposable, IAsyncDisposable
     /// Event raised when dictation state changes.
     /// </summary>
     public event EventHandler<DictationState>? StateChanged;
+
+    /// <summary>
+    /// Event raised when transcription completes with the transcribed text.
+    /// </summary>
+    public event EventHandler<string>? TranscriptionCompleted;
 
     /// <summary>
     /// Gets the current dictation state.
@@ -53,6 +61,7 @@ public class DictationService : IDisposable, IAsyncDisposable
         ITextTyper textTyper,
         TypingSoundPlayer? typingSoundPlayer = null,
         TextFilter? textFilter = null,
+        IVirtualAssistantClient? virtualAssistantClient = null,
         KeyCode triggerKey = KeyCode.CapsLock,
         KeyCode cancelKey = KeyCode.Escape)
     {
@@ -63,6 +72,7 @@ public class DictationService : IDisposable, IAsyncDisposable
         _textTyper = textTyper;
         _typingSoundPlayer = typingSoundPlayer;
         _textFilter = textFilter;
+        _virtualAssistantClient = virtualAssistantClient;
         _triggerKey = triggerKey;
         _cancelKey = cancelKey;
     }
@@ -133,9 +143,17 @@ public class DictationService : IDisposable, IAsyncDisposable
     /// <summary>
     /// Cancels ongoing transcription.
     /// </summary>
-    private void CancelTranscription()
+    public void CancelTranscription()
     {
-        _transcriptionCts?.Cancel();
+        _logger.LogInformation("CancelTranscription called, state: {State}, has CTS: {HasCts}",
+            _state, _transcriptionCts != null);
+
+        // Always try to cancel, regardless of state (race condition protection)
+        if (_transcriptionCts != null && !_transcriptionCts.IsCancellationRequested)
+        {
+            _logger.LogInformation("Cancelling transcription token");
+            _transcriptionCts.Cancel();
+        }
     }
 
     /// <summary>
@@ -143,19 +161,30 @@ public class DictationService : IDisposable, IAsyncDisposable
     /// </summary>
     public async Task StartDictationAsync()
     {
-        if (_state != DictationState.Idle)
+        lock (_stateLock)
         {
-            _logger.LogWarning("Cannot start dictation, current state: {State}", _state);
-            return;
+            if (_state != DictationState.Idle)
+            {
+                _logger.LogWarning("Cannot start dictation, current state: {State}", _state);
+                return;
+            }
+
+            SetState(DictationState.Recording);
         }
 
         try
         {
-            SetState(DictationState.Recording);
+            // Notify VirtualAssistant to stop TTS (fire-and-forget, don't block recording)
+            if (_virtualAssistantClient != null)
+            {
+                _ = _virtualAssistantClient.NotifyRecordingStartedAsync();
+            }
 
             _cts = new CancellationTokenSource();
             _logger.LogInformation("Starting audio recording...");
-            await _audioRecorder.StartRecordingAsync(_cts.Token);
+            // Fire-and-forget: don't await - recording runs in background
+            // Awaiting would block until recording stops
+            _ = _audioRecorder.StartRecordingAsync(_cts.Token);
         }
         catch (Exception ex)
         {
@@ -169,16 +198,31 @@ public class DictationService : IDisposable, IAsyncDisposable
     /// </summary>
     public async Task StopDictationAsync()
     {
-        if (_state != DictationState.Recording)
+        // Check and transition state atomically
+        lock (_stateLock)
         {
-            _logger.LogWarning("Cannot stop dictation, current state: {State}", _state);
-            return;
+            if (_state != DictationState.Recording)
+            {
+                _logger.LogWarning("Cannot stop dictation, current state: {State}", _state);
+                return;
+            }
+            // Create cancellation token BEFORE changing state - so it's available immediately for cancel requests
+            _transcriptionCts = new CancellationTokenSource();
+            // Mark as transcribing immediately to prevent concurrent calls
+            SetState(DictationState.Transcribing);
         }
 
         try
         {
             _logger.LogInformation("Stopping audio recording...");
             await _audioRecorder.StopRecordingAsync();
+
+            // Notify VirtualAssistant to release speech lock immediately after recording stops
+            // This allows TTS to play while Whisper transcribes (they're independent)
+            if (_virtualAssistantClient != null)
+            {
+                _ = _virtualAssistantClient.NotifyRecordingStoppedAsync();
+            }
 
             var audioData = _audioRecorder.GetRecordedData();
             _logger.LogInformation("Recording stopped. Captured {ByteCount} bytes", audioData.Length);
@@ -190,13 +234,21 @@ public class DictationService : IDisposable, IAsyncDisposable
                 return;
             }
 
-            SetState(DictationState.Transcribing);
+            // State is already Transcribing and CTS is ready (set in lock above)
 
-            // Create cancellation token for transcription
-            _transcriptionCts = new CancellationTokenSource();
+            // Check for cancellation before starting transcription
+            // This gives user time to cancel while recording was stopping
+            if (_transcriptionCts.Token.IsCancellationRequested)
+            {
+                _logger.LogInformation("Transcription cancelled before starting");
+                throw new OperationCanceledException(_transcriptionCts.Token);
+            }
 
             // Start transcription sound loop
             _typingSoundPlayer?.StartLoop();
+
+            // One more check right before transcription
+            _transcriptionCts.Token.ThrowIfCancellationRequested();
 
             _logger.LogInformation("Starting transcription...");
             var result = await _speechTranscriber.TranscribeAsync(audioData, _transcriptionCts.Token);
@@ -216,6 +268,9 @@ public class DictationService : IDisposable, IAsyncDisposable
                     // Type the transcribed text
                     await _textTyper.TypeTextAsync(filteredText);
                     _logger.LogInformation("Text typed successfully");
+
+                    // Notify listeners about transcription completion
+                    TranscriptionCompleted?.Invoke(this, filteredText);
                 }
                 else
                 {

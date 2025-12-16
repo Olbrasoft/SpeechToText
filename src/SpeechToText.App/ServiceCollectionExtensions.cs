@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Olbrasoft.SpeechToText.App.Services;
 using Olbrasoft.SpeechToText.Audio;
 using Olbrasoft.SpeechToText.Speech;
 using Olbrasoft.SpeechToText.TextInput;
@@ -16,8 +18,18 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddDictationServices(
         this IServiceCollection services,
-        DictationOptions options)
+        DictationOptions options,
+        IConfiguration configuration)
     {
+        // VirtualAssistant client for TTS coordination
+        services.AddSingleton<HttpClient>();
+        services.AddSingleton<IVirtualAssistantClient>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<VirtualAssistantClient>>();
+            var httpClient = sp.GetRequiredService<HttpClient>();
+            return new VirtualAssistantClient(logger, httpClient, configuration);
+        });
+
         // Keyboard monitor
         services.AddSingleton<IKeyboardMonitor>(sp =>
         {
@@ -85,6 +97,7 @@ public static class ServiceCollectionExtensions
             var textTyper = sp.GetRequiredService<ITextTyper>();
             var soundPlayer = sp.GetService<TypingSoundPlayer>();
             var textFilter = sp.GetService<TextFilter>();
+            var vaClient = sp.GetService<IVirtualAssistantClient>();
 
             return new DictationService(
                 logger,
@@ -94,6 +107,7 @@ public static class ServiceCollectionExtensions
                 textTyper,
                 soundPlayer,
                 textFilter,
+                vaClient,
                 options.GetTriggerKeyCode(),
                 options.GetCancelKeyCode());
         });
