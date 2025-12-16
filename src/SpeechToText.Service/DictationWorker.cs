@@ -1,7 +1,5 @@
 using Olbrasoft.SpeechToText.Audio;
-using Olbrasoft.SpeechToText.Speech;
 using Olbrasoft.SpeechToText.Service.Services;
-using Olbrasoft.SpeechToText.TextInput;
 
 namespace Olbrasoft.SpeechToText.Service;
 
@@ -17,15 +15,11 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
     private readonly IConfiguration _configuration;
     private readonly IKeyboardMonitor _keyboardMonitor;
     private readonly IAudioRecorder _audioRecorder;
-    private readonly ISpeechTranscriber _speechTranscriber;
-    private readonly ITextTyper _textTyper;
+    private readonly ITranscriptionProcessor _transcriptionProcessor;
+    private readonly ITextOutputService _textOutputService;
     private readonly IPttNotifier _pttNotifier;
     private readonly ManualMuteService _manualMuteService;
-    private readonly ITranscriptionHistory _transcriptionHistory;
-    private readonly TypingSoundPlayer _typingSoundPlayer;
-    private readonly IHallucinationFilter _hallucinationFilter;
-    private readonly ISpeechLockService _speechLockService;
-    private readonly ITtsControlService _ttsControlService;
+    private readonly IRecordingModeManager _recordingModeManager;
 
     private bool _isRecording;
     private bool _isTranscribing;
@@ -45,10 +39,9 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
         : null;
 
     /// <summary>
-    /// Stores the mute state of VirtualAssistant before CapsLock recording started.
-    /// Used to restore the original state after recording ends.
+    /// Stores the recording mode context for state restoration.
     /// </summary>
-    private bool? _previousMuteState;
+    private RecordingModeContext? _recordingModeContext;
 
     /// <summary>
     /// CancellationTokenSource for the current transcription operation.
@@ -61,29 +54,21 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
         IConfiguration configuration,
         IKeyboardMonitor keyboardMonitor,
         IAudioRecorder audioRecorder,
-        ISpeechTranscriber speechTranscriber,
-        ITextTyper textTyper,
+        ITranscriptionProcessor transcriptionProcessor,
+        ITextOutputService textOutputService,
         IPttNotifier pttNotifier,
         ManualMuteService manualMuteService,
-        ITranscriptionHistory transcriptionHistory,
-        TypingSoundPlayer typingSoundPlayer,
-        IHallucinationFilter hallucinationFilter,
-        ISpeechLockService speechLockService,
-        ITtsControlService ttsControlService)
+        IRecordingModeManager recordingModeManager)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _keyboardMonitor = keyboardMonitor ?? throw new ArgumentNullException(nameof(keyboardMonitor));
         _audioRecorder = audioRecorder ?? throw new ArgumentNullException(nameof(audioRecorder));
-        _speechTranscriber = speechTranscriber ?? throw new ArgumentNullException(nameof(speechTranscriber));
-        _textTyper = textTyper ?? throw new ArgumentNullException(nameof(textTyper));
+        _transcriptionProcessor = transcriptionProcessor ?? throw new ArgumentNullException(nameof(transcriptionProcessor));
+        _textOutputService = textOutputService ?? throw new ArgumentNullException(nameof(textOutputService));
         _pttNotifier = pttNotifier ?? throw new ArgumentNullException(nameof(pttNotifier));
         _manualMuteService = manualMuteService ?? throw new ArgumentNullException(nameof(manualMuteService));
-        _transcriptionHistory = transcriptionHistory ?? throw new ArgumentNullException(nameof(transcriptionHistory));
-        _typingSoundPlayer = typingSoundPlayer ?? throw new ArgumentNullException(nameof(typingSoundPlayer));
-        _hallucinationFilter = hallucinationFilter ?? throw new ArgumentNullException(nameof(hallucinationFilter));
-        _speechLockService = speechLockService ?? throw new ArgumentNullException(nameof(speechLockService));
-        _ttsControlService = ttsControlService ?? throw new ArgumentNullException(nameof(ttsControlService));
+        _recordingModeManager = recordingModeManager ?? throw new ArgumentNullException(nameof(recordingModeManager));
 
         // Load configuration
         var triggerKeyName = _configuration.GetValue<string>("PushToTalkDictation:TriggerKey", "CapsLock");
@@ -226,26 +211,8 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
 
             _logger.LogInformation("Starting audio recording...");
 
-            // CRITICAL: Stop TTS and create lock SYNCHRONOUSLY before anything else
-            // This ensures TTS is stopped immediately when CapsLock is pressed
-            // Note: EdgeTTS also polls CapsLock LED every 100ms as a backup
-
-            // Stop any TTS speech immediately (fire-and-forget but don't await)
-            _ = _ttsControlService.StopAllSpeechAsync();
-
-            // Save current mute state before forcing mute (to restore after recording)
-            _previousMuteState = await _ttsControlService.GetMuteStateAsync();
-            _logger.LogDebug("Saved previous mute state: {PreviousMuteState}", _previousMuteState);
-
-            // Mute VirtualAssistant (changes tray icon to muted state)
-            // Only set if not already muted
-            if (_previousMuteState != true)
-            {
-                await _ttsControlService.SetMuteAsync(true);
-            }
-
-            // Create speech lock synchronously to prevent TTS from speaking during recording
-            _speechLockService.CreateLock("PushToTalk:Recording");
+            // Enter recording mode (stops TTS, creates lock, saves mute state)
+            _recordingModeContext = await _recordingModeManager.EnterRecordingModeAsync();
 
             // Notify clients about recording start
             await _pttNotifier.NotifyRecordingStartedAsync();
@@ -303,53 +270,34 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
                 try
                 {
                     _logger.LogInformation("Starting transcription... (press Escape to cancel)");
-                    var transcription = await _speechTranscriber.TranscribeAsync(recordedData, _transcriptionCts.Token);
+                    var result = await _transcriptionProcessor.ProcessAsync(recordedData, _transcriptionCts.Token);
 
-                    if (transcription.Success && !string.IsNullOrWhiteSpace(transcription.Text))
+                    if (result.Success && !string.IsNullOrWhiteSpace(result.Text))
                     {
-                        // CRITICAL: Validate transcription to filter out Whisper hallucinations
-                        if (!_hallucinationFilter.TryClean(transcription.Text, out var cleanedText))
-                        {
-                            // Hallucination detected - hide icon, stop sound, but DON'T type text
-                            _logger.LogInformation("Whisper hallucination detected and filtered: '{Text}'", transcription.Text);
-
-                            // Play tear paper sound to indicate rejection
-                            _ = Task.Run(async () => await _typingSoundPlayer.PlayTearPaperAsync());
-
-                            // Stop icon/sound by sending failed notification
-                            await _pttNotifier.NotifyTranscriptionFailedAsync("Whisper hallucination filtered");
-                            return; // STOP HERE - no text typing
-                        }
-
-                        _logger.LogInformation("Transcription successful: {Text} (confidence: {Confidence:F3})",
-                            cleanedText, transcription.Confidence);
-
                         // Notify clients about successful transcription
-                        await _pttNotifier.NotifyTranscriptionCompletedAsync(cleanedText, transcription.Confidence);
+                        await _pttNotifier.NotifyTranscriptionCompletedAsync(result.Text, result.Confidence);
 
-                        // Save to history before typing (allows repeat if pasted to wrong window)
-                        _transcriptionHistory.SaveText(cleanedText);
-                        _logger.LogDebug("Transcription saved to history");
-
-                        // Type transcribed text
-                        await _textTyper.TypeTextAsync(cleanedText);
-                        _logger.LogInformation("Text typed successfully");
+                        // Output text (types and saves to history)
+                        await _textOutputService.OutputTextAsync(result.Text);
+                    }
+                    else if (result.WasHallucination)
+                    {
+                        // Play rejection sound for hallucination
+                        _ = Task.Run(async () => await _textOutputService.PlayRejectionSoundAsync());
+                        await _pttNotifier.NotifyTranscriptionFailedAsync(result.ErrorMessage ?? "Whisper hallucination filtered");
                     }
                     else
                     {
-                        var errorMessage = transcription.ErrorMessage ?? "Empty transcription result";
-                        _logger.LogWarning("Transcription failed or empty: {Error}", errorMessage);
-
-                        // Notify clients about failed transcription
-                        await _pttNotifier.NotifyTranscriptionFailedAsync(errorMessage);
+                        _logger.LogWarning("Transcription failed: {Error}", result.ErrorMessage);
+                        await _pttNotifier.NotifyTranscriptionFailedAsync(result.ErrorMessage ?? "Transcription failed");
                     }
                 }
                 catch (OperationCanceledException)
                 {
                     _logger.LogInformation("Transcription cancelled by user (Escape key pressed)");
 
-                    // Play tear paper sound to indicate cancellation
-                    _ = Task.Run(async () => await _typingSoundPlayer.PlayTearPaperAsync());
+                    // Play rejection sound for cancellation
+                    _ = Task.Run(async () => await _textOutputService.PlayRejectionSoundAsync());
 
                     await _pttNotifier.NotifyTranscriptionFailedAsync("Transcription cancelled");
                 }
@@ -364,8 +312,8 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
             {
                 _logger.LogWarning("No audio data recorded");
 
-                // Play tear paper sound to indicate nothing was recorded
-                _ = Task.Run(async () => await _typingSoundPlayer.PlayTearPaperAsync());
+                // Play rejection sound for empty recording
+                _ = Task.Run(async () => await _textOutputService.PlayRejectionSoundAsync());
 
                 await _pttNotifier.NotifyTranscriptionFailedAsync("No audio data recorded");
             }
@@ -380,26 +328,12 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
             _isRecording = false;
             _recordingStartTime = null;
 
-            // Delete speech lock to allow TTS to speak again
-            _speechLockService.ReleaseLock();
-
-            // Restore VirtualAssistant mute state to what it was before recording
-            // If it was muted before (via ScrollLock/menu), keep it muted
-            // If it was unmuted before, unmute it now
-            if (_previousMuteState.HasValue)
+            // Exit recording mode (releases lock, restores mute state)
+            if (_recordingModeContext != null)
             {
-                _logger.LogDebug("Restoring previous mute state: {PreviousMuteState}", _previousMuteState.Value);
-                await _ttsControlService.SetMuteAsync(_previousMuteState.Value);
-                _previousMuteState = null;
+                await _recordingModeManager.ExitRecordingModeAsync(_recordingModeContext);
+                _recordingModeContext = null;
             }
-            else
-            {
-                // Fallback: if we couldn't get previous state, unmute
-                await _ttsControlService.SetMuteAsync(false);
-            }
-
-            // Flush any queued TTS messages that accumulated during dictation
-            await _ttsControlService.FlushQueueAsync();
         }
     }
 

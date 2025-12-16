@@ -116,6 +116,11 @@ public static class ServiceCollectionExtensions
         // TTS control service (HTTP client for TTS and VirtualAssistant APIs)
         services.AddHttpClient<ITtsControlService, TtsControlService>();
 
+        // Composite services (SRP refactoring - combines related dependencies)
+        services.AddSingleton<ITranscriptionProcessor, TranscriptionProcessor>();
+        services.AddSingleton<ITextOutputService, TextOutputService>();
+        services.AddSingleton<IRecordingModeManager, RecordingModeManager>();
+
         // HTTP client for DictationWorker
         services.AddHttpClient<DictationWorker>();
 
