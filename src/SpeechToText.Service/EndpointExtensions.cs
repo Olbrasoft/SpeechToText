@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Olbrasoft.SpeechToText.Service.Hubs;
+using Olbrasoft.SpeechToText.Service.Models;
 using Olbrasoft.SpeechToText.Service.Services;
 
 namespace Olbrasoft.SpeechToText.Service;
@@ -23,7 +24,67 @@ public static class EndpointExtensions
         // Repeat last transcription endpoint - copies last text to clipboard
         app.MapPost("/api/ptt/repeat", RepeatTranscriptionHandler);
 
+        // Status endpoint - returns current recording state
+        app.MapGet("/api/status", GetStatusHandler);
+
+        // Recording control endpoints
+        app.MapPost("/api/recording/start", StartRecordingHandler);
+        app.MapPost("/api/recording/stop", StopRecordingHandler);
+        app.MapPost("/api/recording/toggle", ToggleRecordingHandler);
+
         return app;
+    }
+
+    private static StatusResponse GetStatusHandler(IRecordingStateProvider stateProvider)
+    {
+        return new StatusResponse
+        {
+            IsRecording = stateProvider.IsRecording,
+            IsTranscribing = stateProvider.IsTranscribing,
+            RecordingDurationSeconds = stateProvider.RecordingDuration?.TotalSeconds
+        };
+    }
+
+    private static async Task<IResult> StartRecordingHandler(
+        IRecordingController controller,
+        ILogger<Program> logger)
+    {
+        var started = await controller.StartRecordingRemoteAsync();
+
+        if (started)
+        {
+            logger.LogInformation("Recording started via API");
+            return Results.Ok(new { success = true, message = "Recording started" });
+        }
+
+        logger.LogWarning("Recording start via API failed - already recording");
+        return Results.BadRequest(new { success = false, error = "Already recording" });
+    }
+
+    private static async Task<IResult> StopRecordingHandler(
+        IRecordingController controller,
+        ILogger<Program> logger)
+    {
+        var stopped = await controller.StopRecordingRemoteAsync();
+
+        if (stopped)
+        {
+            logger.LogInformation("Recording stopped via API");
+            return Results.Ok(new { success = true, message = "Recording stopped" });
+        }
+
+        logger.LogWarning("Recording stop via API failed - not recording");
+        return Results.BadRequest(new { success = false, error = "Not recording" });
+    }
+
+    private static async Task<IResult> ToggleRecordingHandler(
+        IRecordingController controller,
+        ILogger<Program> logger)
+    {
+        var isNowRecording = await controller.ToggleRecordingAsync();
+
+        logger.LogInformation("Recording toggled via API - now: {IsRecording}", isNowRecording ? "recording" : "stopped");
+        return Results.Ok(new { success = true, isRecording = isNowRecording });
     }
 
     private static async Task<IResult> RepeatTranscriptionHandler(

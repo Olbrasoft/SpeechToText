@@ -9,8 +9,9 @@ namespace Olbrasoft.SpeechToText.Service;
 /// Background worker service for push-to-talk dictation.
 /// Monitors keyboard for CapsLock state changes and controls audio recording.
 /// Records when CapsLock is ON, stops and transcribes when CapsLock is OFF.
+/// Also provides remote control capabilities via IRecordingController interface.
 /// </summary>
-public class DictationWorker : BackgroundService
+public class DictationWorker : BackgroundService, IRecordingStateProvider, IRecordingController
 {
     private readonly ILogger<DictationWorker> _logger;
     private readonly IConfiguration _configuration;
@@ -30,6 +31,18 @@ public class DictationWorker : BackgroundService
     private bool _isTranscribing;
     private DateTime? _recordingStartTime;
     private KeyCode _triggerKey;
+
+    // IRecordingStateProvider implementation
+    /// <inheritdoc />
+    public bool IsRecording => _isRecording;
+
+    /// <inheritdoc />
+    public bool IsTranscribing => _isTranscribing;
+
+    /// <inheritdoc />
+    public TimeSpan? RecordingDuration => _recordingStartTime.HasValue
+        ? DateTime.UtcNow - _recordingStartTime.Value
+        : null;
 
     /// <summary>
     /// Stores the mute state of VirtualAssistant before CapsLock recording started.
@@ -402,5 +415,52 @@ public class DictationWorker : BackgroundService
         await _keyboardMonitor.StopMonitoringAsync();
 
         await base.StopAsync(cancellationToken);
+    }
+
+    // IRecordingController implementation
+
+    /// <inheritdoc />
+    public async Task<bool> StartRecordingRemoteAsync(CancellationToken cancellationToken = default)
+    {
+        if (_isRecording)
+        {
+            _logger.LogWarning("Remote start requested but recording is already in progress");
+            return false;
+        }
+
+        _logger.LogInformation("Remote recording start requested");
+        await StartRecordingAsync();
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> StopRecordingRemoteAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_isRecording)
+        {
+            _logger.LogWarning("Remote stop requested but no recording in progress");
+            return false;
+        }
+
+        _logger.LogInformation("Remote recording stop requested");
+        await StopRecordingAsync();
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> ToggleRecordingAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Remote recording toggle requested, current state: {IsRecording}", _isRecording);
+
+        if (_isRecording)
+        {
+            await StopRecordingAsync();
+            return false; // Now stopped
+        }
+        else
+        {
+            await StartRecordingAsync();
+            return true; // Now recording
+        }
     }
 }

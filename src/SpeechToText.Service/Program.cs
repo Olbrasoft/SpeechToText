@@ -38,6 +38,9 @@ var app = builder.Build();
 
 app.UseCors();
 
+// Serve static files from wwwroot (for remote control page)
+app.UseStaticFiles();
+
 // Map all endpoints using extension method
 app.MapSpeechToTextEndpoints();
 

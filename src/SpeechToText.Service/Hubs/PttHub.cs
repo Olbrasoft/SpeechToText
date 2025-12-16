@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using Olbrasoft.SpeechToText.Service.Models;
 using Olbrasoft.SpeechToText.Service.Services;
 
 namespace Olbrasoft.SpeechToText.Service.Hubs;
@@ -12,21 +13,29 @@ public class PttHub : Hub
     private readonly ILogger<PttHub> _logger;
     private readonly ManualMuteService _manualMuteService;
     private readonly IPttNotifier _pttNotifier;
-    
+    private readonly IRecordingStateProvider _stateProvider;
+    private readonly IRecordingController _recordingController;
+
     /// <summary>
     /// Initializes a new instance of the <see cref="PttHub"/> class.
     /// </summary>
     /// <param name="logger">Logger for connection events.</param>
     /// <param name="manualMuteService">Service for managing manual mute state.</param>
     /// <param name="pttNotifier">Notifier for broadcasting PTT events.</param>
+    /// <param name="stateProvider">Provider for recording state.</param>
+    /// <param name="recordingController">Controller for recording operations.</param>
     public PttHub(
-        ILogger<PttHub> logger, 
+        ILogger<PttHub> logger,
         ManualMuteService manualMuteService,
-        IPttNotifier pttNotifier)
+        IPttNotifier pttNotifier,
+        IRecordingStateProvider stateProvider,
+        IRecordingController recordingController)
     {
         _logger = logger;
         _manualMuteService = manualMuteService;
         _pttNotifier = pttNotifier;
+        _stateProvider = stateProvider;
+        _recordingController = recordingController;
     }
     
     /// <summary>
@@ -88,5 +97,53 @@ public class PttHub : Hub
     public Task<bool> GetManualMuteState()
     {
         return Task.FromResult(_manualMuteService.IsMuted);
+    }
+
+    // Recording control methods for remote clients
+
+    /// <summary>
+    /// Gets the current recording status.
+    /// </summary>
+    /// <returns>Current recording state including isRecording, isTranscribing, and duration.</returns>
+    public Task<StatusResponse> GetStatus()
+    {
+        _logger.LogDebug("Client {ConnectionId} requested status", Context.ConnectionId);
+
+        return Task.FromResult(new StatusResponse
+        {
+            IsRecording = _stateProvider.IsRecording,
+            IsTranscribing = _stateProvider.IsTranscribing,
+            RecordingDurationSeconds = _stateProvider.RecordingDuration?.TotalSeconds
+        });
+    }
+
+    /// <summary>
+    /// Starts recording audio remotely.
+    /// </summary>
+    /// <returns>True if recording was started, false if already recording.</returns>
+    public async Task<bool> StartRecording()
+    {
+        _logger.LogInformation("Client {ConnectionId} requested StartRecording", Context.ConnectionId);
+        return await _recordingController.StartRecordingRemoteAsync();
+    }
+
+    /// <summary>
+    /// Stops recording audio remotely.
+    /// </summary>
+    /// <returns>True if recording was stopped, false if not recording.</returns>
+    public async Task<bool> StopRecording()
+    {
+        _logger.LogInformation("Client {ConnectionId} requested StopRecording", Context.ConnectionId);
+        return await _recordingController.StopRecordingRemoteAsync();
+    }
+
+    /// <summary>
+    /// Toggles recording state - starts if not recording, stops if recording.
+    /// </summary>
+    /// <returns>True if now recording, false if now stopped.</returns>
+    public async Task<bool> ToggleRecording()
+    {
+        _logger.LogInformation("Client {ConnectionId} requested ToggleRecording", Context.ConnectionId);
+        return await _recordingController.ToggleRecordingAsync();
     }
 }

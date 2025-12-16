@@ -6,18 +6,13 @@ using Olbrasoft.Testing.Xunit.Attributes;
 namespace Olbrasoft.SpeechToText.Linux.Tests.TextInput;
 
 /// <summary>
-/// Tests for DotoolTextTyper. Tests that create real instances are marked
-/// with [SkipOnCIFact/Theory] to prevent GUI process spawning on CI.
+/// Tests for DotoolTextTyper.
+/// WARNING: Tests that create real instances are commented out because they can
+/// spawn dotool/wl-copy processes which interfere with GUI and cause unexpected behavior.
+/// They should only be run manually in controlled environments.
 /// </summary>
 public class DotoolTextTyperTests
 {
-    private readonly Mock<ILogger<DotoolTextTyper>> _loggerMock;
-
-    public DotoolTextTyperTests()
-    {
-        _loggerMock = new Mock<ILogger<DotoolTextTyper>>();
-    }
-
     [Fact]
     public void Constructor_WithNullLogger_ShouldThrowArgumentNullException()
     {
@@ -25,101 +20,80 @@ public class DotoolTextTyperTests
         Assert.Throws<ArgumentNullException>(() => new DotoolTextTyper(null!));
     }
 
-    [SkipOnCIFact]
-    public void Constructor_WithValidLogger_ShouldNotThrow()
-    {
-        // Act & Assert
-        var exception = Record.Exception(() => new DotoolTextTyper(_loggerMock.Object));
-        Assert.Null(exception);
-    }
-
-    [SkipOnCIFact]
-    public async Task TypeTextAsync_WithNullText_ShouldReturnEarly()
-    {
-        // Arrange
-        var typer = new DotoolTextTyper(_loggerMock.Object);
-
-        // Act - should not throw
-        var exception = await Record.ExceptionAsync(() => typer.TypeTextAsync(null!));
-
-        // Assert - should return early without throwing
-        Assert.Null(exception);
-    }
-
-    [SkipOnCIFact]
-    public async Task TypeTextAsync_WithEmptyText_ShouldReturnEarly()
-    {
-        // Arrange
-        var typer = new DotoolTextTyper(_loggerMock.Object);
-
-        // Act - should not throw
-        var exception = await Record.ExceptionAsync(() => typer.TypeTextAsync(string.Empty));
-
-        // Assert - should return early without throwing
-        Assert.Null(exception);
-    }
-
-    [SkipOnCITheory]
-    [InlineData(" ")]
-    [InlineData("  ")]
-    [InlineData("\t")]
-    [InlineData("\n")]
-    [InlineData("   \t\n   ")]
-    public async Task TypeTextAsync_WithWhitespaceText_ShouldReturnEarly(string text)
-    {
-        // Arrange
-        var typer = new DotoolTextTyper(_loggerMock.Object);
-
-        // Act - should not throw
-        var exception = await Record.ExceptionAsync(() => typer.TypeTextAsync(text));
-
-        // Assert - should return early without throwing
-        Assert.Null(exception);
-    }
-
-    [SkipOnCIFact]
-    public void IsAvailable_ShouldReturnBooleanWithoutException()
-    {
-        // Arrange
-        var typer = new DotoolTextTyper(_loggerMock.Object);
-
-        // Act
-        var exception = Record.Exception(() => _ = typer.IsAvailable);
-
-        // Assert - should not throw
-        Assert.Null(exception);
-    }
-
-    [SkipOnCIFact]
-    public async Task TypeTextAsync_WhenNotAvailable_ShouldThrowInvalidOperationException()
-    {
-        // Arrange
-        var typer = new DotoolTextTyper(_loggerMock.Object);
-
-        // Only test if dotool/wl-copy is not available
-        if (typer.IsAvailable)
-        {
-            return; // Skip test if tools are installed
-        }
-
-        // Act & Assert
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            typer.TypeTextAsync("test text"));
-    }
-
-    [SkipOnCIFact]
-    public async Task TypeTextAsync_WithCancellationToken_ShouldAcceptToken()
-    {
-        // Arrange
-        var typer = new DotoolTextTyper(_loggerMock.Object);
-        var cts = new CancellationTokenSource();
-
-        // Act - verify method signature accepts token
-        // Will return early because text is null
-        await typer.TypeTextAsync(null!, cts.Token);
-
-        // Assert - no exception means it worked
-    }
+    // ALL OTHER TESTS ARE COMMENTED OUT - THEY CREATE REAL DOTOOL INSTANCES
+    // WHICH CAN SPAWN PROCESSES AND INTERFERE WITH THE GUI ENVIRONMENT.
+    //
+    // To run these tests manually:
+    // 1. Uncomment the test you want to run
+    // 2. Run it in an isolated environment (no active windows you care about)
+    // 3. Comment it back after testing
+    //
+    // [SkipOnCIFact]
+    // public void Constructor_WithValidLogger_ShouldNotThrow()
+    // {
+    //     var loggerMock = new Mock<ILogger<DotoolTextTyper>>();
+    //     var exception = Record.Exception(() => new DotoolTextTyper(loggerMock.Object));
+    //     Assert.Null(exception);
+    // }
+    //
+    // [SkipOnCIFact]
+    // public async Task TypeTextAsync_WithNullText_ShouldReturnEarly()
+    // {
+    //     var loggerMock = new Mock<ILogger<DotoolTextTyper>>();
+    //     var typer = new DotoolTextTyper(loggerMock.Object);
+    //     var exception = await Record.ExceptionAsync(() => typer.TypeTextAsync(null!));
+    //     Assert.Null(exception);
+    // }
+    //
+    // [SkipOnCIFact]
+    // public async Task TypeTextAsync_WithEmptyText_ShouldReturnEarly()
+    // {
+    //     var loggerMock = new Mock<ILogger<DotoolTextTyper>>();
+    //     var typer = new DotoolTextTyper(loggerMock.Object);
+    //     var exception = await Record.ExceptionAsync(() => typer.TypeTextAsync(string.Empty));
+    //     Assert.Null(exception);
+    // }
+    //
+    // [SkipOnCITheory]
+    // [InlineData(" ")]
+    // [InlineData("  ")]
+    // [InlineData("\t")]
+    // [InlineData("\n")]
+    // [InlineData("   \t\n   ")]
+    // public async Task TypeTextAsync_WithWhitespaceText_ShouldReturnEarly(string text)
+    // {
+    //     var loggerMock = new Mock<ILogger<DotoolTextTyper>>();
+    //     var typer = new DotoolTextTyper(loggerMock.Object);
+    //     var exception = await Record.ExceptionAsync(() => typer.TypeTextAsync(text));
+    //     Assert.Null(exception);
+    // }
+    //
+    // [SkipOnCIFact]
+    // public void IsAvailable_ShouldReturnBooleanWithoutException()
+    // {
+    //     var loggerMock = new Mock<ILogger<DotoolTextTyper>>();
+    //     var typer = new DotoolTextTyper(loggerMock.Object);
+    //     var exception = Record.Exception(() => _ = typer.IsAvailable);
+    //     Assert.Null(exception);
+    // }
+    //
+    // [SkipOnCIFact]
+    // public async Task TypeTextAsync_WhenNotAvailable_ShouldThrowInvalidOperationException()
+    // {
+    //     var loggerMock = new Mock<ILogger<DotoolTextTyper>>();
+    //     var typer = new DotoolTextTyper(loggerMock.Object);
+    //     if (typer.IsAvailable) return;
+    //     await Assert.ThrowsAsync<InvalidOperationException>(() => typer.TypeTextAsync("test text"));
+    // }
+    //
+    // [SkipOnCIFact]
+    // public async Task TypeTextAsync_WithCancellationToken_ShouldAcceptToken()
+    // {
+    //     var loggerMock = new Mock<ILogger<DotoolTextTyper>>();
+    //     var typer = new DotoolTextTyper(loggerMock.Object);
+    //     var cts = new CancellationTokenSource();
+    //     await typer.TypeTextAsync(null!, cts.Token);
+    // }
 
     [Fact]
     public void TerminalClasses_ShouldContainCommonTerminals()

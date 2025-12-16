@@ -137,8 +137,13 @@ public static class ServiceCollectionExtensions
             return new UsbMouseMonitor(logger, keyboardMonitor, keySimulator);
         });
 
-        // Register worker
-        services.AddHostedService<DictationWorker>();
+        // Register worker as singleton first (so we can resolve it for interfaces)
+        services.AddSingleton<DictationWorker>();
+        services.AddHostedService<DictationWorker>(sp => sp.GetRequiredService<DictationWorker>());
+
+        // Register interfaces pointing to the same DictationWorker instance
+        services.AddSingleton<IRecordingStateProvider>(sp => sp.GetRequiredService<DictationWorker>());
+        services.AddSingleton<IRecordingController>(sp => sp.GetRequiredService<DictationWorker>());
 
         return services;
     }
