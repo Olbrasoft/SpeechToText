@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -306,13 +307,21 @@ try
     Console.WriteLine("Press Ctrl+C to exit");
     Console.WriteLine();
 
-    // Handle Ctrl+C
+    // Handle Ctrl+C (SIGINT)
     Console.CancelKeyPress += (_, e) =>
     {
         e.Cancel = true;
         Console.WriteLine("\nCtrl+C pressed - shutting down...");
         cts.Cancel();
     };
+
+    // Handle SIGTERM (systemd shutdown, GNOME logout, etc.)
+    using var sigtermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+    {
+        Console.WriteLine("\nSIGTERM received - shutting down...");
+        context.Cancel = true; // Prevent default termination, let us clean up
+        cts.Cancel();
+    });
 
     // Keep the application running
     try

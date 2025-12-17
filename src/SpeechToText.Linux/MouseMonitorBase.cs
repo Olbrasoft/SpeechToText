@@ -119,6 +119,14 @@ public abstract class MouseMonitorBase : IDisposable
         }
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        // Register callback to close stream on cancellation - this forces IOException in blocking Read()
+        _cts.Token.Register(() =>
+        {
+            try { _deviceStream?.Close(); }
+            catch { /* ignore */ }
+        });
+
         _isMonitoring = true;
 
         _reconnectTask = Task.Run(() => ReconnectLoopAsync(_cts.Token), _cts.Token);
@@ -147,11 +155,13 @@ public abstract class MouseMonitorBase : IDisposable
             {
                 try
                 {
-                    await _reconnectTask.ConfigureAwait(false);
+                    // Wait with timeout as safety net (2 seconds should be enough)
+                    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    await _reconnectTask.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {
-                    // Expected during shutdown
+                    _logger.LogWarning("Stop monitoring timed out after 2 seconds, forcing shutdown");
                 }
             }
 
