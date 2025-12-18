@@ -1,16 +1,16 @@
 #!/bin/bash
 set -e
 
-# PushToTalk Deploy Script
+# SpeechToText Deploy Script
 # Builds, tests, auto-increments version, and deploys
 # Usage: ./deploy.sh [--no-version-bump]
 #   --no-version-bump: Skip version increment (used by webhook to avoid infinite loop)
 
-PROJECT_PATH="/home/jirka/Olbrasoft/PushToTalk"
-PROJECT_FILE="$PROJECT_PATH/src/PushToTalk.App/PushToTalk.App.csproj"
-DEPLOY_TARGET="/home/jirka/push-to-talk"
-DESKTOP_FILE="io.olbrasoft.PushToTalk.desktop"
-ICON_NAME="io.olbrasoft.PushToTalk"
+PROJECT_PATH="/home/jirka/Olbrasoft/SpeechToText"
+PROJECT_FILE="$PROJECT_PATH/src/SpeechToText.App/SpeechToText.App.csproj"
+DEPLOY_TARGET="/home/jirka/speech-to-text"
+DESKTOP_FILE="io.olbrasoft.SpeechToText.desktop"
+ICON_NAME="io.olbrasoft.SpeechToText"
 
 # Parse arguments
 BUMP_VERSION=true
@@ -24,7 +24,7 @@ for arg in "$@"; do
 done
 
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║               PushToTalk Deploy Script                        ║"
+echo "║               SpeechToText Deploy Script                      ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo
 
@@ -68,7 +68,7 @@ echo
 # Step 4: Build and publish
 echo "🔨 Building and publishing..."
 mkdir -p "$DEPLOY_TARGET"
-dotnet publish src/PushToTalk.App/PushToTalk.App.csproj \
+dotnet publish src/SpeechToText.App/SpeechToText.App.csproj \
   -c Release \
   -o "$DEPLOY_TARGET" \
   --no-self-contained
@@ -84,15 +84,15 @@ mkdir -p "$DESKTOP_DIR"
 # Create desktop file with correct Exec path
 cat > "$DESKTOP_DIR/$DESKTOP_FILE" << EOF
 [Desktop Entry]
-Name=Push To Talk
-GenericName=Dictation Tool
+Name=Speech To Text
+GenericName=Voice Transcription
 Comment=Voice transcription using Whisper AI (v$NEW_VERSION)
-Exec=$DEPLOY_TARGET/push-to-talk
+Exec=$DEPLOY_TARGET/speech-to-text
 Icon=$ICON_NAME
 Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Utility;Accessibility;
-Keywords=voice;whisper;dictation;transcription;ptt;microphone;
+Keywords=voice;whisper;dictation;transcription;speech;microphone;
 StartupNotify=false
 X-GNOME-UsesNotifications=false
 EOF
@@ -138,6 +138,6 @@ echo "╠═══════════════════════�
 echo "║  Version: $NEW_VERSION                                           ║"
 echo "║  Location: $DEPLOY_TARGET                          ║"
 echo "║                                                              ║"
-echo "║  Launch: Press Super key and search 'Push To Talk'          ║"
-echo "║  Or run: $DEPLOY_TARGET/push-to-talk               ║"
+echo "║  Launch: Press Super key and search 'Speech To Text'        ║"
+echo "║  Or run: $DEPLOY_TARGET/speech-to-text             ║"
 echo "╚══════════════════════════════════════════════════════════════╝"

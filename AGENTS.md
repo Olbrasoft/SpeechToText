@@ -4,7 +4,7 @@ Instructions for AI agents working with this repository.
 
 ## Project Overview
 
-Push-to-Talk functionality for Linux voice assistant. Monitors mouse buttons (side buttons, middle click) and triggers speech-to-text recording via HTTP API calls.
+Speech-to-text functionality for Linux voice assistant. Provides speech recognition and transcription services controlled via API/SignalR interface for gesture-based triggers.
 
 ## Build Commands
 
@@ -19,29 +19,30 @@ dotnet publish -c Release -o ./publish
 - Follow Microsoft C# naming conventions
 - Use xUnit + Moq for testing
 - Target .NET 10
-- Namespace prefix: `Olbrasoft.PushToTalk`
+- Namespace prefix: `Olbrasoft.SpeechToText`
 
 ## Important Paths
 
 - Source: `src/`
-  - `PushToTalk.Core/` - Core logic and interfaces
-  - `PushToTalk.Linux/` - Linux-specific implementations
-  - `PushToTalk.App/` - Desktop application
-  - `PushToTalk.Service/` - Background service
+  - `SpeechToText.Core/` - Core logic and interfaces
+  - `SpeechToText.Linux/` - Linux-specific implementations
+  - `SpeechToText.App/` - Desktop application
+  - `SpeechToText.Service/` - Background service
 - Tests: `tests/`
   - Each source project has its own test project
-- Solution: `PushToTalk.sln`
+- Solution: `SpeechToText.sln`
 
 ## Architecture
 
-- **Strategy Pattern** for mouse button monitoring (libevdev, udev, etc.)
 - **SOLID principles** - especially Single Responsibility and Dependency Inversion
 - Clean separation: Core (interfaces/models) -> Linux (platform) -> App/Service (UI/hosting)
+- API/SignalR for remote control
+- Whisper.net for speech recognition
 
 ## Testing Requirements
 
 - Test naming: `[Method]_[Scenario]_[Expected]`
-- Example: `Monitor_ButtonPressed_TriggersCallback`
+- Example: `StartRecording_WhenIdle_StartsRecording`
 - Framework: xUnit + Moq
 
 ## Secrets

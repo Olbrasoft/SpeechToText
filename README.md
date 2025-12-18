@@ -1,8 +1,8 @@
-# PushToTalk
+# SpeechToText
 
-[![Auto Deploy](https://img.shields.io/badge/auto--deploy-enabled-green)](https://github.com/Olbrasoft/PushToTalk)
+[![Build](https://img.shields.io/badge/build-passing-green)](https://github.com/Olbrasoft/SpeechToText)
 
-Push-to-Talk functionality for Linux voice assistant. Monitors mouse buttons and triggers speech-to-text recording.
+Speech-to-text functionality for Linux voice assistant. Provides speech recognition and transcription services with API/SignalR control.
 
 ## Getting Started
 
@@ -10,13 +10,14 @@ Push-to-Talk functionality for Linux voice assistant. Monitors mouse buttons and
 
 - .NET 10 SDK
 - Linux (tested on Debian/Ubuntu)
-- libevdev (for mouse button monitoring)
+- libevdev (for keyboard input simulation)
+- Whisper.net for speech recognition
 
 ### Installation
 
 ```bash
-git clone https://github.com/Olbrasoft/PushToTalk.git
-cd PushToTalk
+git clone https://github.com/Olbrasoft/SpeechToText.git
+cd SpeechToText
 dotnet build
 ```
 
@@ -29,29 +30,37 @@ dotnet test
 ## Project Structure
 
 ```
-PushToTalk/
+SpeechToText/
 ├── src/
-│   ├── PushToTalk.Core/           # Core logic and interfaces
-│   ├── PushToTalk.Linux/          # Linux-specific implementations
-│   ├── PushToTalk.App/            # Desktop application
-│   └── PushToTalk.Service/        # Background service
+│   ├── SpeechToText.Core/           # Core logic and interfaces
+│   ├── SpeechToText.Linux/          # Linux-specific implementations
+│   ├── SpeechToText.App/            # Desktop application
+│   └── SpeechToText.Service/        # Background service
 ├── tests/
-│   ├── PushToTalk.Core.Tests/
-│   ├── PushToTalk.Linux.Tests/
-│   ├── PushToTalk.App.Tests/
-│   └── PushToTalk.Service.Tests/
-├── assets/                        # Icons and resources
-├── data/                          # Desktop/metainfo files
-├── debian/                        # Debian packaging scripts
-├── .github/workflows/             # CI/CD
-└── PushToTalk.sln
+│   ├── SpeechToText.Core.Tests/
+│   ├── SpeechToText.Linux.Tests/
+│   ├── SpeechToText.App.Tests/
+│   └── SpeechToText.Service.Tests/
+├── assets/                          # Icons and resources
+├── data/                            # Desktop/metainfo files
+├── deploy/                          # Deployment scripts
+├── .github/workflows/               # CI/CD
+└── SpeechToText.sln
 ```
 
 ## Architecture
 
-- **Strategy Pattern** for different mouse button monitoring implementations
 - **SOLID principles** throughout
 - Clean separation between Core, Linux platform, App and Service layers
+- API/SignalR interface for remote control
+- Whisper.net integration for speech recognition
+
+## API Endpoints
+
+- `/api/recording/start` - Start recording
+- `/api/recording/stop` - Stop recording and transcribe
+- `/api/recording/toggle` - Toggle recording state
+- SignalR Hub at `/dictationHub` - Real-time state updates
 
 ## License
 

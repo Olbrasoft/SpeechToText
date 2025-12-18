@@ -13,7 +13,7 @@ public static class EndpointExtensions
     /// <summary>
     /// Maps all PushToTalk API endpoints and SignalR hubs.
     /// </summary>
-    public static WebApplication MapPushToTalkEndpoints(this WebApplication app)
+    public static WebApplication MapSpeechToTextEndpoints(this WebApplication app)
     {
         // Map SignalR hub
         app.MapHub<PttHub>("/hubs/ptt");

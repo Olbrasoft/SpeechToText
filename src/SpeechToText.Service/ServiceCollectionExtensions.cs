@@ -20,15 +20,15 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Adds all PushToTalk services to the service collection.
     /// </summary>
-    public static IServiceCollection AddPushToTalkServices(
+    public static IServiceCollection AddSpeechToTextServices(
         this IServiceCollection services,
         IConfiguration configuration)
     {
         // Get configuration values
-        var keyboardDevice = configuration.GetValue<string?>("PushToTalkDictation:KeyboardDevice");
-        var ggmlModelPath = configuration.GetValue<string>("PushToTalkDictation:GgmlModelPath")
+        var keyboardDevice = configuration.GetValue<string?>("SpeechToTextDictation:KeyboardDevice");
+        var ggmlModelPath = configuration.GetValue<string>("SpeechToTextDictation:GgmlModelPath")
             ?? Path.Combine(AppContext.BaseDirectory, "models", "ggml-medium.bin");
-        var whisperLanguage = configuration.GetValue<string>("PushToTalkDictation:WhisperLanguage") ?? "cs";
+        var whisperLanguage = configuration.GetValue<string>("SpeechToTextDictation:WhisperLanguage") ?? "cs";
 
         // SignalR
         services.AddSignalR();

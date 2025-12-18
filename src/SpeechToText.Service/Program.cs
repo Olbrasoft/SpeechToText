@@ -11,7 +11,7 @@ var earlyConfig = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
-var lockFilePath = earlyConfig["SystemPaths:PushToTalkLockFile"]
+var lockFilePath = earlyConfig["SystemPaths:SpeechToTextLockFile"]
     ?? "/tmp/push-to-talk-dictation.lock";
 
 // Single instance check
@@ -29,7 +29,7 @@ var cts = new CancellationTokenSource();
 var builder = WebApplication.CreateBuilder(args);
 
 // Add all services using extension method
-builder.Services.AddPushToTalkServices(builder.Configuration);
+builder.Services.AddSpeechToTextServices(builder.Configuration);
 
 // Configure logging
 builder.Logging.AddConsole();
@@ -43,7 +43,7 @@ app.UseCors();
 app.UseStaticFiles();
 
 // Map all endpoints using extension method
-app.MapPushToTalkEndpoints();
+app.MapSpeechToTextEndpoints();
 
 // Get services for initialization
 var pttNotifier = app.Services.GetRequiredService<IPttNotifier>();
@@ -64,7 +64,7 @@ try
     });
 
     Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
-    Console.WriteLine("║            PushToTalk Dictation Service                    ║");
+    Console.WriteLine("║            SpeechToText Dictation Service                    ║");
     Console.WriteLine("╚══════════════════════════════════════════════════════════════╝");
     Console.WriteLine();
     Console.WriteLine("Transcription tray icon initialized");

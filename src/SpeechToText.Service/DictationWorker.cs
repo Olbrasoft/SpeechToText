@@ -50,7 +50,7 @@ public class DictationWorker : BackgroundService, IRecordingStateProvider, IReco
         _manualMuteService = manualMuteService ?? throw new ArgumentNullException(nameof(manualMuteService));
 
         // Load configuration
-        var triggerKeyName = _configuration.GetValue<string>("PushToTalkDictation:TriggerKey", "CapsLock");
+        var triggerKeyName = _configuration.GetValue<string>("SpeechToTextDictation:TriggerKey", "CapsLock");
         _triggerKey = Enum.Parse<KeyCode>(triggerKeyName);
 
         _logger.LogWarning("=== NOTIFIER HASH: {Hash} ===", _pttNotifier.GetHashCode());
