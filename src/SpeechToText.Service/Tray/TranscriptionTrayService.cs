@@ -20,6 +20,7 @@ public class TranscriptionTrayService : IDisposable
     private readonly IPttNotifier _pttNotifier;
     private readonly TypingSoundPlayer _typingSoundPlayer;
     private readonly string _logsViewerUrl;
+    private readonly string _version;
 
     private IntPtr _indicator;
     private string _iconsPath = null!;
@@ -35,7 +36,7 @@ public class TranscriptionTrayService : IDisposable
     private const int FrameCount = 5;
 
     // Keep callbacks alive to prevent GC
-    private GObject.GCallback? _logsCallback;
+    private GObject.GCallback? _aboutCallback;
     private GObject.GCallback? _quitCallback;
     private GLib.GSourceFunc? _animationCallback;
     private GLib.GSourceFunc? _showCallback;
@@ -56,6 +57,8 @@ public class TranscriptionTrayService : IDisposable
         var endpoints = new ServiceEndpoints();
         configuration?.GetSection(ServiceEndpoints.SectionName).Bind(endpoints);
         _logsViewerUrl = endpoints.LogsViewer;
+
+        _version = typeof(TranscriptionTrayService).Assembly.GetName().Version?.ToString() ?? "unknown";
     }
 
     /// <summary>
@@ -73,30 +76,30 @@ public class TranscriptionTrayService : IDisposable
         
         // Setup icon paths
         _iconsPath = Path.Combine(AppContext.BaseDirectory, "icons");
-        
+
         // Frame names (without extension - AppIndicator adds it)
         _frameNames = new string[FrameCount];
         for (int i = 0; i < FrameCount; i++)
         {
             _frameNames[i] = $"document-white-frame{i + 1}";
         }
-        
-        // Create app indicator (initially hidden/passive)
+
+        // Create app indicator with robot icon (always visible)
         _indicator = AppIndicator.app_indicator_new(
-            "transcription-indicator",
-            _frameNames[0],
+            "speech-to-text",
+            "robot",
             AppIndicator.Category.ApplicationStatus);
-        
+
         if (_indicator == IntPtr.Zero)
         {
             throw new InvalidOperationException("Failed to create app indicator");
         }
-        
+
         AppIndicator.app_indicator_set_icon_theme_path(_indicator, _iconsPath);
-        AppIndicator.app_indicator_set_title(_indicator, "Transcription");
-        
-        // Start as PASSIVE (hidden)
-        AppIndicator.app_indicator_set_status(_indicator, AppIndicator.Status.Passive);
+        AppIndicator.app_indicator_set_title(_indicator, "Speech to Text");
+
+        // Start as ACTIVE (visible)
+        AppIndicator.app_indicator_set_status(_indicator, AppIndicator.Status.Active);
         
         // Create menu
         CreateMenu();
@@ -112,27 +115,22 @@ public class TranscriptionTrayService : IDisposable
     private void CreateMenu()
     {
         var menu = Gtk.gtk_menu_new();
-        
-        // Status item (disabled)
-        var statusItem = Gtk.gtk_menu_item_new_with_label("Transcription Indicator");
-        Gtk.gtk_widget_set_sensitive(statusItem, false);
-        Gtk.gtk_menu_shell_append(menu, statusItem);
-        
-        // Show Logs item
-        var logsItem = Gtk.gtk_menu_item_new_with_label("Zobrazit logy");
-        Gtk.gtk_menu_shell_append(menu, logsItem);
-        
-        _logsCallback = (widget, data) => OpenLogsInBrowser();
-        GObject.g_signal_connect_data(logsItem, "activate", _logsCallback, IntPtr.Zero, IntPtr.Zero, 0);
-        
+
+        // About item
+        var aboutItem = Gtk.gtk_menu_item_new_with_label("About");
+        Gtk.gtk_menu_shell_append(menu, aboutItem);
+
+        _aboutCallback = (widget, data) => ShowAboutDialog();
+        GObject.g_signal_connect_data(aboutItem, "activate", _aboutCallback, IntPtr.Zero, IntPtr.Zero, 0);
+
         // Separator
         var separator = Gtk.gtk_separator_menu_item_new();
         Gtk.gtk_menu_shell_append(menu, separator);
-        
+
         // Quit item
         var quitItem = Gtk.gtk_menu_item_new_with_label("Ukončit");
         Gtk.gtk_menu_shell_append(menu, quitItem);
-        
+
         _quitCallback = (widget, data) =>
         {
             _logger.LogInformation("Quit requested from tray menu");
@@ -140,7 +138,7 @@ public class TranscriptionTrayService : IDisposable
             Gtk.gtk_main_quit();
         };
         GObject.g_signal_connect_data(quitItem, "activate", _quitCallback, IntPtr.Zero, IntPtr.Zero, 0);
-        
+
         Gtk.gtk_widget_show_all(menu);
         AppIndicator.app_indicator_set_menu(_indicator, menu);
     }
@@ -237,6 +235,34 @@ public class TranscriptionTrayService : IDisposable
         AppIndicator.app_indicator_set_icon_full(_indicator, iconPath, "Transcribing...");
         
         return true; // Continue animation
+    }
+
+    private void ShowAboutDialog()
+    {
+        try
+        {
+            var aboutText = $"Speech to Text\\n\\n" +
+                            $"Version: {_version}\\n\\n" +
+                            $"Voice transcription using Whisper AI.\\n" +
+                            $"Press configured mouse button to start dictation.\\n\\n" +
+                            $"https://github.com/Olbrasoft/SpeechToText";
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "zenity",
+                Arguments = $"--info --title=\"About Speech to Text\" --text=\"{aboutText}\" --width=400",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            Process.Start(startInfo);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not show About dialog");
+            Console.WriteLine($"Speech to Text v{_version}");
+            Console.WriteLine("https://github.com/Olbrasoft/SpeechToText");
+        }
     }
 
     private void OpenLogsInBrowser()
