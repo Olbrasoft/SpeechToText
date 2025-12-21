@@ -44,7 +44,7 @@ public sealed class SttGrpcService : SpeechToText.SpeechToTextBase
                 Success = result.Success,
                 Text = result.Text ?? string.Empty,
                 DurationSeconds = (float)(result.AudioDuration?.TotalSeconds ?? 0),
-                ErrorMessage = result.ErrorMessage
+                ErrorMessage = result.ErrorMessage ?? string.Empty
             };
 
             if (!string.IsNullOrWhiteSpace(result.Language))
