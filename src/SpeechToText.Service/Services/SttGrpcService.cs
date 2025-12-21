@@ -7,6 +7,7 @@ namespace Olbrasoft.SpeechToText.Service.Services;
 
 /// <summary>
 /// gRPC service implementation for speech-to-text transcription.
+/// Provides centralized speech recognition for VirtualAssistant and PushToTalk.
 /// </summary>
 public sealed class SttGrpcService : SpeechToText.SpeechToTextBase
 {
