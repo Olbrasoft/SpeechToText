@@ -5,7 +5,9 @@ using Olbrasoft.SpeechToText.Core.Models;
 namespace Olbrasoft.SpeechToText.Service.Controllers;
 
 /// <summary>
-/// REST API controller for speech-to-text transcription (fallback for debugging/monitoring).
+/// REST API controller for speech-to-text transcription.
+/// Provides HTTP endpoints for debugging and monitoring alongside the primary gRPC service.
+/// Clients should prefer gRPC for production use due to better performance.
 /// </summary>
 [ApiController]
 [Route("api/stt")]
