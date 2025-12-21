@@ -21,12 +21,13 @@ builder.Services.AddControllers();
 // Add health checks
 builder.Services.AddHealthChecks();
 
-// Configure Kestrel to listen on port 5052
+// Configure Kestrel to listen on port 5052 with HTTP/2 (required for gRPC)
 builder.WebHost.ConfigureKestrel(options =>
 {
     options.ListenAnyIP(5052, listenOptions =>
     {
-        listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1AndHttp2;
+        // HTTP/2 only for gRPC (without TLS)
+        listenOptions.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http2;
     });
 });
 
