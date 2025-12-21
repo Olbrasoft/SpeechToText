@@ -1,0 +1,39 @@
+[Unit]
+Description=SpeechToText gRPC Service
+After=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/olbrasoft/speech-to-text/app
+ExecStart=/opt/olbrasoft/speech-to-text/app/SpeechToText.Service
+Restart=always
+RestartSec=10
+SyslogIdentifier=speech-to-text
+
+# Environment
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+# Configuration
+Environment=ASPNETCORE_URLS=http://0.0.0.0:5052
+Environment="ASPNETCORE_Kestrel__Endpoints__Grpc__Url=http://0.0.0.0:5052"
+Environment="ASPNETCORE_Kestrel__Endpoints__Grpc__Protocols=Http1AndHttp2"
+
+# Use config from separate directory
+Environment=ASPNETCORE_APPSETTINGS_PATH=/opt/olbrasoft/speech-to-text/config/appsettings.json
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/olbrasoft/speech-to-text/logs
+ReadOnlyPaths=/opt/olbrasoft/speech-to-text/config
+ReadOnlyPaths=/home/jirka/.local/share/whisper-models
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=4G
+
+[Install]
+WantedBy=multi-user.target
