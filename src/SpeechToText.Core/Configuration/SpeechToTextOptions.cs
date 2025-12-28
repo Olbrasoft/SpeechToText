@@ -8,8 +8,9 @@ public sealed class SpeechToTextOptions
     /// <summary>
     /// Gets or sets the Whisper model file name or path.
     /// If it's just a filename, WhisperModelLocator will find it in standard locations.
+    /// Model must be explicitly specified - no default model.
     /// </summary>
-    public string ModelPath { get; set; } = "ggml-medium.bin";
+    public string? ModelPath { get; set; } = null;
 
     /// <summary>
     /// Gets or sets the default language for transcription (e.g., "cs", "en").
@@ -34,6 +35,13 @@ public sealed class SpeechToTextOptions
     /// </summary>
     public string GetFullModelPath()
     {
+        if (string.IsNullOrWhiteSpace(ModelPath))
+        {
+            throw new InvalidOperationException(
+                "ModelPath is not configured. " +
+                "Please set SpeechToText:ModelPath in appsettings.json or environment variables.");
+        }
+
         // If it's just a filename (no path separators), use WhisperModelLocator
         if (!Path.IsPathRooted(ModelPath) && !ModelPath.Contains('/') && !ModelPath.Contains('\\'))
         {
