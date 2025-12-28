@@ -10,21 +10,32 @@ namespace Olbrasoft.SpeechToText.Providers;
 
 /// <summary>
 /// Whisper.net based speech transcription provider with GPU acceleration support.
-/// Uses singleton pattern to load model once and semaphore for thread-safe access.
+/// Supports multiple models in VRAM cache with per-request model selection.
 /// </summary>
 public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
 {
     private readonly ILogger<WhisperNetProvider> _logger;
     private readonly SpeechToTextOptions _options;
-    private static WhisperFactory? _whisperFactory;
-    private static WhisperProcessor? _processor;
-    private static readonly SemaphoreSlim _lock = new(1, 1);
-    private static bool _initialized;
+
+    // Model cache: stores (factory, processor, lastUsed) for each model
+    private static readonly Dictionary<string, ModelCacheEntry> _modelCache = new();
+    private static readonly SemaphoreSlim _globalLock = new(1, 1);
     private bool _disposed;
 
     private const int SampleRate = 16000;
 
     public string Name => "WhisperNet";
+
+    /// <summary>
+    /// Model cache entry with factory, processor, and usage tracking.
+    /// </summary>
+    private sealed class ModelCacheEntry
+    {
+        public required WhisperFactory Factory { get; init; }
+        public required WhisperProcessor Processor { get; init; }
+        public required SemaphoreSlim Lock { get; init; }
+        public DateTime LastUsed { get; set; }
+    }
 
     public WhisperNetProvider(
         ILogger<WhisperNetProvider> logger,
@@ -35,43 +46,69 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
     }
 
     /// <summary>
-    /// Initializes the Whisper.net factory and processor (singleton, thread-safe).
+    /// Gets or loads a Whisper model from cache.
+    /// Thread-safe lazy loading - models stay in VRAM cache until service restart.
     /// </summary>
-    private void Initialize()
+    private async Task<ModelCacheEntry> GetOrLoadModelAsync(string modelName, CancellationToken cancellationToken)
     {
-        if (_initialized)
-            return;
+        if (string.IsNullOrWhiteSpace(modelName))
+        {
+            throw new ArgumentException(
+                "Model name must be specified in the transcription request. " +
+                "No default model is configured.",
+                nameof(modelName));
+        }
 
-        _lock.Wait();
+        // Fast path: check if model is already loaded (no lock needed for read)
+        if (_modelCache.TryGetValue(modelName, out var cachedEntry))
+        {
+            cachedEntry.LastUsed = DateTime.UtcNow;
+            _logger.LogDebug("Using cached model: {ModelName}", modelName);
+            return cachedEntry;
+        }
+
+        // Slow path: need to load model (acquire global lock)
+        await _globalLock.WaitAsync(cancellationToken);
         try
         {
             // Double-check after acquiring lock
-            if (_initialized)
-                return;
+            if (_modelCache.TryGetValue(modelName, out var doubleCheckEntry))
+            {
+                doubleCheckEntry.LastUsed = DateTime.UtcNow;
+                _logger.LogDebug("Using cached model after lock: {ModelName}", modelName);
+                return doubleCheckEntry;
+            }
 
-            var modelPath = _options.GetFullModelPath();
-            _logger.LogInformation("Loading Whisper.net model from: {ModelPath}", modelPath);
+            // Load model into VRAM
+            var modelPath = WhisperModelLocator.GetModelPath(modelName);
+            _logger.LogInformation("Loading Whisper.net model: {ModelName} from {ModelPath}", modelName, modelPath);
 
             if (!File.Exists(modelPath))
             {
                 throw new FileNotFoundException($"Whisper model not found: {modelPath}");
             }
 
-            // Log runtime library order
-            _logger.LogInformation("Runtime library order: {Order}",
-                string.Join(", ", RuntimeOptions.RuntimeLibraryOrder));
+            // Log runtime library info (only on first load)
+            if (_modelCache.Count == 0)
+            {
+                _logger.LogInformation("Runtime library order: {Order}",
+                    string.Join(", ", RuntimeOptions.RuntimeLibraryOrder));
+            }
 
             // Create factory with GPU acceleration
             var options = new WhisperFactoryOptions { UseGpu = _options.UseGpu };
-            _whisperFactory = WhisperFactory.FromPath(modelPath, options);
+            var factory = WhisperFactory.FromPath(modelPath, options);
 
-            // Log which library was loaded
-            _logger.LogInformation("Loaded runtime library: {Library}",
-                RuntimeOptions.LoadedLibrary?.ToString() ?? "Unknown");
+            // Log which library was loaded (only on first load)
+            if (_modelCache.Count == 0)
+            {
+                _logger.LogInformation("Loaded runtime library: {Library}",
+                    RuntimeOptions.LoadedLibrary?.ToString() ?? "Unknown");
+            }
 
             // Create processor with optimized settings
             var language = _options.DefaultLanguage ?? "auto";
-            _processor = _whisperFactory.CreateBuilder()
+            var processor = factory.CreateBuilder()
                 .WithLanguage(language)
                 // Use beam search for better accuracy
                 .WithBeamSearchSamplingStrategy()
@@ -82,18 +119,30 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
                 .WithNoContext()
                 .Build();
 
-            _initialized = true;
-            _logger.LogInformation("Whisper.net initialized successfully (GPU: {Gpu}, Language: {Language})",
-                _options.UseGpu, language);
+            var entry = new ModelCacheEntry
+            {
+                Factory = factory,
+                Processor = processor,
+                Lock = new SemaphoreSlim(1, 1),
+                LastUsed = DateTime.UtcNow
+            };
+
+            _modelCache[modelName] = entry;
+
+            _logger.LogInformation(
+                "Whisper.net model loaded successfully: {ModelName} (GPU: {Gpu}, Language: {Language}, Total cached models: {Count})",
+                modelName, _options.UseGpu, language, _modelCache.Count);
+
+            return entry;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to initialize Whisper.net");
+            _logger.LogError(ex, "Failed to load Whisper.net model: {ModelName}", modelName);
             throw;
         }
         finally
         {
-            _lock.Release();
+            _globalLock.Release();
         }
     }
 
@@ -110,12 +159,23 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
 
         try
         {
-            Initialize();
+            // Validate model name
+            if (string.IsNullOrWhiteSpace(request.ModelName))
+            {
+                throw new ArgumentException(
+                    "Model name must be specified in the transcription request. " +
+                    "No default model is configured.",
+                    nameof(request));
+            }
 
-            _logger.LogDebug("Starting transcription (audio size: {Size} bytes)", request.AudioData.Length);
+            // Get or load model from cache
+            var modelEntry = await GetOrLoadModelAsync(request.ModelName, cancellationToken);
 
-            // Thread-safe access to Whisper processor
-            await _lock.WaitAsync(cancellationToken);
+            _logger.LogDebug("Starting transcription with model {ModelName} (audio size: {Size} bytes)",
+                request.ModelName, request.AudioData.Length);
+
+            // Thread-safe access to this specific model's processor
+            await modelEntry.Lock.WaitAsync(cancellationToken);
             try
             {
                 // Strip WAV header if present
@@ -131,7 +191,7 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
                 // Process with Whisper.net
                 var segments = new List<string>();
 
-                await foreach (var segment in _processor!.ProcessAsync(samples, cancellationToken))
+                await foreach (var segment in modelEntry.Processor.ProcessAsync(samples, cancellationToken))
                 {
                     if (!string.IsNullOrWhiteSpace(segment.Text))
                     {
@@ -150,8 +210,8 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
                 }
 
                 var transcriptionTime = DateTime.UtcNow - startTime;
-                _logger.LogInformation("Transcription successful: \"{Text}\" ({Time}ms)",
-                    transcription, transcriptionTime.TotalMilliseconds);
+                _logger.LogInformation("Transcription successful with {ModelName}: \"{Text}\" ({Time}ms)",
+                    request.ModelName, transcription, transcriptionTime.TotalMilliseconds);
 
                 return TranscriptionResult.Ok(
                     transcription,
@@ -163,7 +223,7 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
             }
             finally
             {
-                _lock.Release();
+                modelEntry.Lock.Release();
             }
         }
         catch (OperationCanceledException)
@@ -180,19 +240,18 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
 
     public Task<TranscriptionProviderInfo> GetInfoAsync(CancellationToken cancellationToken = default)
     {
-        var modelPath = _options.GetFullModelPath();
-        var modelName = Path.GetFileName(modelPath);
+        var cachedModels = string.Join(", ", _modelCache.Keys);
 
         var info = new TranscriptionProviderInfo
         {
             Name = Name,
-            IsAvailable = _initialized && File.Exists(modelPath),
-            ModelName = modelName,
+            IsAvailable = true,
+            ModelName = _modelCache.Count > 0 ? cachedModels : "No models loaded yet",
             GpuEnabled = _options.UseGpu,
             SupportedLanguages = [], // Whisper supports all languages
-            AdditionalInfo = _initialized
-                ? $"Loaded from: {modelPath}"
-                : "Not initialized yet"
+            AdditionalInfo = _modelCache.Count > 0
+                ? $"{_modelCache.Count} model(s) cached in VRAM: {cachedModels}"
+                : "No models loaded - models will be loaded on first request"
         };
 
         return Task.FromResult(info);
@@ -227,8 +286,8 @@ public sealed class WhisperNetProvider : ITranscriptionProvider, IDisposable
         if (_disposed)
             return;
 
-        // Note: We don't dispose singleton resources (_whisperFactory, _processor)
-        // because they're shared across instances and should live for the app lifetime.
+        // Note: We don't dispose cached models (_modelCache)
+        // because they're static and shared across instances.
         // They will be disposed when the app shuts down.
 
         _disposed = true;
