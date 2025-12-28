@@ -32,6 +32,7 @@ jobs:
 
       - name: Restart service
         run: |
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
           systemctl --user restart speech-to-text.service || true
           sleep 2
           systemctl --user status speech-to-text.service --no-pager || true
